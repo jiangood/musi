@@ -6,16 +6,9 @@ import fumi.day.literalmusi.ui.navigation.NavGraph
 import fumi.day.literalmusi.ui.theme.LiteralMusiTheme
 
 @Composable
-fun App(
-    sharedText: String? = null,
-    onSharedTextConsumed: () -> Unit = {}
-) {
+fun App() {
     LiteralMusiTheme {
         val navController = rememberNavController()
-        NavGraph(
-            navController = navController,
-            sharedText = sharedText,
-            onSharedTextConsumed = onSharedTextConsumed
-        )
+        NavGraph(navController = navController)
     }
 }

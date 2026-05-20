@@ -1,50 +1,31 @@
 package fumi.day.literalmusi.ui.navigation
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavHostController
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.navArgument
-import fumi.day.literalmusi.ui.edit.MemoEditScreen
-import fumi.day.literalmusi.ui.list.MemoListScreen
+import fumi.day.literalmusi.ui.list.MusicListScreen
+import fumi.day.literalmusi.ui.player.PlayerScreen
 import fumi.day.literalmusi.ui.settings.SettingsScreen
-import java.net.URLDecoder
-import java.net.URLEncoder
 
 object Routes {
-    const val MEMO_LIST = "memos/list"
-    const val MEMO_EDIT = "memos/edit"
+    const val MUSIC_LIST = "music/list"
+    const val PLAYER = "player"
     const val SETTINGS = "settings"
 }
 
 @Composable
 fun NavGraph(
-    navController: NavHostController,
-    sharedText: String? = null,
-    onSharedTextConsumed: () -> Unit = {}
+    navController: NavHostController
 ) {
-    LaunchedEffect(sharedText) {
-        if (sharedText != null) {
-            val encoded = URLEncoder.encode(sharedText, "UTF-8")
-            navController.navigate("${Routes.MEMO_EDIT}?initialContent=$encoded")
-            onSharedTextConsumed()
-        }
-    }
-
     NavHost(
         navController = navController,
-        startDestination = Routes.MEMO_LIST
+        startDestination = Routes.MUSIC_LIST
     ) {
-        composable(Routes.MEMO_LIST) {
-            MemoListScreen(
-                onNavigateToEdit = { fileName ->
-                    if (fileName != null) {
-                        navController.navigate("${Routes.MEMO_EDIT}?fileName=$fileName")
-                    } else {
-                        navController.navigate(Routes.MEMO_EDIT)
-                    }
+        composable(Routes.MUSIC_LIST) {
+            MusicListScreen(
+                onNavigateToPlayer = {
+                    navController.navigate(Routes.PLAYER)
                 },
                 onNavigateToSettings = {
                     navController.navigate(Routes.SETTINGS)
@@ -52,29 +33,11 @@ fun NavGraph(
             )
         }
 
-        composable(
-            route = "${Routes.MEMO_EDIT}?fileName={fileName}&initialContent={initialContent}",
-            arguments = listOf(
-                navArgument("fileName") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-                navArgument("initialContent") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                }
-            )
-        ) { backStackEntry ->
-            val initialContent = backStackEntry.arguments?.getString("initialContent")?.let {
-                URLDecoder.decode(it, "UTF-8")
-            }
-            MemoEditScreen(
+        composable(Routes.PLAYER) {
+            PlayerScreen(
                 onNavigateBack = {
                     navController.popBackStack()
-                },
-                initialContent = initialContent
+                }
             )
         }
 
