@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import dagger.hilt.android.AndroidEntryPoint
 import fumi.day.literalmusi.ui.App
+import fumi.day.literalmusi.ui.theme.LiteralMusiTheme
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
