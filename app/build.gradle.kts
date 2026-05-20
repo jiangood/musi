@@ -111,8 +111,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
 
     implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.exoplayer.flac)
-    implementation(libs.androidx.media3.exoplayer.opus)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
