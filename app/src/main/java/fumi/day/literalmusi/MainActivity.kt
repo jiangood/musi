@@ -1,0 +1,86 @@
+package fumi.day.literalmusi
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.mutableStateOf
+import dagger.hilt.android.AndroidEntryPoint
+import fumi.day.literalmusi.data.DefaultMemoInitializer
+import fumi.day.literalmusi.data.github.GitHubSyncManager
+import fumi.day.literalmusi.ui.App
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+@AndroidEntryPoint
+class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var defaultMemoInitializer: DefaultMemoInitializer
+
+    @Inject
+    lateinit var syncManager: GitHubSyncManager
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private val sharedTextState = mutableStateOf<String?>(null)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        defaultMemoInitializer.initializeIfNeeded()
+
+        sharedTextState.value = handleShareIntent(intent)
+
+        setContent {
+            App(
+                sharedText = sharedTextState.value,
+                onSharedTextConsumed = { sharedTextState.value = null }
+            )
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        sharedTextState.value = handleShareIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        syncInBackground()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        scope.cancel()
+    }
+
+    private fun handleShareIntent(intent: Intent): String? {
+        if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+            val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
+            val title = intent.getStringExtra(Intent.EXTRA_SUBJECT)
+
+            return if (title != null && (text.startsWith("http://") || text.startsWith("https://"))) {
+                "# $title\n\n[$title]($text)"
+            } else if (text.startsWith("http://") || text.startsWith("https://")) {
+                "# Shared link\n\n[Link]($text)"
+            } else if (title != null) {
+                "# $title\n\n$text"
+            } else {
+                "# Shared text\n\n$text"
+            }
+        }
+        return null
+    }
+
+    private fun syncInBackground() {
+        syncManager.launchSync()
+    }
+}
