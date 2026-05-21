@@ -2,6 +2,8 @@ package fumi.day.literalmusi.data.git
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -104,6 +106,70 @@ class GitHubApiTransport @Inject constructor(
         updateRef(commitSha)
 
         remoteFiles = listRemoteFiles()
+    }
+
+    override suspend fun batchCommit(ops: List<Operation>): BatchResult {
+        if (ops.isEmpty()) return BatchResult(committed = true)
+        val currentFiles = remoteFiles
+        val entries = mutableListOf<JSONObject>()
+        for ((name, info) in currentFiles) {
+            entries.add(JSONObject().apply {
+                put("path", "pile/$name")
+                put("mode", "100644")
+                put("type", "blob")
+                put("sha", info.sha)
+            })
+        }
+        val errors = mutableListOf<String>()
+        for (op in ops) {
+            when (op.type) {
+                OpType.ADD, OpType.MODIFY -> {
+                    val name = op.path.removePrefix("pile/")
+                    val file = File(pileDir, name)
+                    if (!file.exists()) {
+                        errors.add("${op.type} failed: ${op.path} not found")
+                        continue
+                    }
+                    val sha = createBlob(file.readBytes())
+                    entries.removeAll { it.getString("path") == op.path }
+                    entries.add(JSONObject().apply {
+                        put("path", op.path)
+                        put("mode", "100644")
+                        put("type", "blob")
+                        put("sha", sha)
+                    })
+                }
+                OpType.DELETE -> {
+                    entries.removeAll { it.getString("path") == op.path }
+                }
+                OpType.RENAME -> {
+                    entries.removeAll { it.getString("path") == op.oldPath }
+                    val name = op.path.removePrefix("pile/")
+                    val file = File(pileDir, name)
+                    if (!file.exists()) {
+                        errors.add("RENAME failed: ${op.path} not found")
+                        continue
+                    }
+                    val sha = createBlob(file.readBytes())
+                    entries.add(JSONObject().apply {
+                        put("path", op.path)
+                        put("mode", "100644")
+                        put("type", "blob")
+                        put("sha", sha)
+                    })
+                }
+            }
+        }
+        return try {
+            val treeSha = createTree(entries)
+            val parentSha = getRefSha()
+            val commitSha = createCommit("sync: ${ops.size} ops", treeSha, parentSha)
+            updateRef(commitSha)
+            remoteFiles = listRemoteFiles()
+            BatchResult(committed = true, errors = errors)
+        } catch (e: Exception) {
+            BatchResult(committed = false, errors = listOf("${e.javaClass.simpleName}: ${e.message}"))
+        }
     }
 
     override suspend fun push(): Boolean = true
