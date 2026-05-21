@@ -51,7 +51,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 5
-        versionName = "1.0.5"
+        versionName = "1.0.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -87,6 +87,12 @@ android {
             excludes += "/META-INF/NOTICE"
             excludes += "/META-INF/LICENSE.txt"
             excludes += "/META-INF/NOTICE.txt"
+        }
+    }
+
+    applicationVariants.configureEach {
+        outputs.configureEach {
+            outputFileName = "app-release-${this@configureEach.versionName}.apk"
         }
     }
 }

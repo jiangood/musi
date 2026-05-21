@@ -19,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -286,10 +288,10 @@ private fun MediaStorePickerDialog(
     onDismiss: () -> Unit
 ) {
     var selected by remember { mutableStateOf(setOf<String>()) }
-    var showFolderPrompt by remember { mutableStateOf<MediaStoreSong?>(null) }
+    var expandedFolders by remember { mutableStateOf(setOf<String>()) }
 
-    val songsByFolder = remember(songs) {
-        songs.groupBy { it.parentFolder }
+    val folderEntries = remember(songs) {
+        songs.groupBy { it.parentFolder }.entries.sortedBy { it.key }
     }
 
     AlertDialog(
@@ -305,41 +307,81 @@ private fun MediaStorePickerDialog(
                 }
             } else {
                 LazyColumn(modifier = Modifier.height(400.dp)) {
-                    items(songs, key = { it.id }) { song ->
-                        val isChecked = song.uri in selected
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    if (isChecked) {
-                                        selected = selected - song.uri
-                                    } else {
-                                        showFolderPrompt = song
+                    folderEntries.forEach { (folder, folderSongs) ->
+                        val folderName = folder.substringAfterLast('/').ifEmpty { folder }
+                        val selectedInFolder = folderSongs.count { it.uri in selected }
+                        val allSelected = selectedInFolder == folderSongs.size
+                        val isExpanded = folder in expandedFolders
+
+                        item(key = "header_$folder") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        expandedFolders = if (isExpanded) expandedFolders - folder
+                                        else expandedFolders + folder
+                                    }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = allSelected,
+                                    onCheckedChange = {
+                                        selected = if (allSelected) {
+                                            selected - folderSongs.map { it.uri }.toSet()
+                                        } else {
+                                            selected + folderSongs.map { it.uri }.toSet()
+                                        }
+                                    }
+                                )
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown
+                                    else Icons.Default.KeyboardArrowRight,
+                                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(folderName, style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        "$selectedInFolder / ${folderSongs.size}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        if (isExpanded) {
+                            items(folderSongs, key = { it.id }) { song ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            selected = if (song.uri in selected) selected - song.uri
+                                            else selected + song.uri
+                                        }
+                                        .padding(start = 48.dp, top = 2.dp, bottom = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = song.uri in selected,
+                                        onCheckedChange = {
+                                            selected = if (song.uri in selected) selected - song.uri
+                                            else selected + song.uri
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(song.title, style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            "${song.artist} · ${song.formattedDuration}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
                                 }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(checked = isChecked, onCheckedChange = {
-                                if (isChecked) {
-                                    selected = selected - song.uri
-                                } else {
-                                    showFolderPrompt = song
-                                }
-                            })
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(song.title, style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    "${song.artist} · ${song.formattedDuration}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    song.parentFolder.substringAfterLast('/'),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
                             }
                         }
                     }
@@ -360,35 +402,6 @@ private fun MediaStorePickerDialog(
             }
         }
     )
-
-    showFolderPrompt?.let { song ->
-        val folderName = song.parentFolder.substringAfterLast('/')
-            .ifEmpty { song.parentFolder }
-        AlertDialog(
-            onDismissRequest = { showFolderPrompt = null },
-            title = { Text("Import from folder?") },
-            text = {
-                Text("Also import all songs from \"$folderName\"?")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val folderSongs = songsByFolder[song.parentFolder]?.map { it.uri } ?: emptyList()
-                    selected = selected + folderSongs
-                    showFolderPrompt = null
-                }) {
-                    Text("Yes, import all")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    selected = selected + song.uri
-                    showFolderPrompt = null
-                }) {
-                    Text("Just this song")
-                }
-            }
-        )
-    }
 }
 
 @Composable
