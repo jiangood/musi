@@ -184,21 +184,19 @@ class GitHubApiTransport @Inject constructor(
 
     private fun ensureRepoInitialized() {
         if (getRefSha() != null) return
-        val emptyTreeSha = createEmptyTree()
-        val rootCommitSha = createCommit("Initial commit", emptyTreeSha, null)
-        createRef(rootCommitSha)
+        createInitialCommitViaContents()
     }
 
-    private fun createEmptyTree(): String {
-        val conn = openConnection(repoApi("/git/trees"), "POST")
+    private fun createInitialCommitViaContents() {
+        val conn = openConnection(repoApi("/contents/.musi-init"), "PUT")
         conn.doOutput = true
         conn.setRequestProperty("Content-Type", "application/json")
         val body = JSONObject().apply {
-            put("tree", JSONArray())
+            put("message", "Initialize repository for Literal Musi sync")
+            put("content", Base64.getEncoder().encodeToString("musi".toByteArray()))
         }
         DataOutputStream(conn.outputStream).use { it.writeBytes(body.toString()) }
         checkResponse(conn)
-        return JSONObject(readBody(conn)).getString("sha")
     }
 
     private fun createRef(commitSha: String) {
