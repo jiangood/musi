@@ -28,13 +28,13 @@ android {
     
     signingConfigs {
         create("release") {
-            val ciKeystorePath = System.getenv("CI_KEYSTORE_PATH")
+            val ciKeystorePath = System.getenv("SIGNING_KEYSTORE_PATH")
             val ciKeystoreFile = ciKeystorePath?.let { file(it) }
             if (ciKeystoreFile?.exists() == true) {
                 storeFile = ciKeystoreFile
-                storePassword = System.getenv("STORE_PASSWORD") ?: ""
-                keyAlias = System.getenv("KEY_ALIAS") ?: ""
-                keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+                storePassword = System.getenv("SIGNING_KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS") ?: ""
+                keyPassword = System.getenv("SIGNING_KEYSTORE_PASSWORD") ?: ""
             } else if (localPropertiesFile.exists()) {
                 storeFile = file("/root/musi/literal-musi.jks")
                 storePassword = localProperties["STORE_PASSWORD"].toString()
