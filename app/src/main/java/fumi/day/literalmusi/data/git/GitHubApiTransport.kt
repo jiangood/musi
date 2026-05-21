@@ -133,6 +133,13 @@ class GitHubApiTransport @Inject constructor(
         return conn
     }
 
+    private fun checkResponse(conn: HttpURLConnection) {
+        if (conn.responseCode !in 200..299) {
+            val body = try { InputStreamReader(conn.errorStream).readText() } catch (_: Exception) { "unknown" }
+            throw RuntimeException("GitHub API ${conn.responseCode}: $body")
+        }
+    }
+
     private fun readBody(conn: HttpURLConnection): String {
         val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
         return InputStreamReader(stream).readText()
@@ -167,9 +174,9 @@ class GitHubApiTransport @Inject constructor(
     private fun downloadFile(fileName: String): ByteArray {
         val conn = openConnection(repoApi("/contents/pile/$fileName"))
         conn.setRequestProperty("Accept", "application/vnd.github.v3.raw")
-        val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
+        checkResponse(conn)
         val baos = ByteArrayOutputStream()
-        stream.copyTo(baos)
+        conn.inputStream.copyTo(baos)
         return baos.toByteArray()
     }
 
@@ -182,6 +189,7 @@ class GitHubApiTransport @Inject constructor(
             put("encoding", "base64")
         }
         DataOutputStream(conn.outputStream).use { it.writeBytes(body.toString()) }
+        checkResponse(conn)
         return JSONObject(readBody(conn)).getString("sha")
     }
 
@@ -193,6 +201,7 @@ class GitHubApiTransport @Inject constructor(
             put("tree", JSONArray(entries))
         }
         DataOutputStream(conn.outputStream).use { it.writeBytes(body.toString()) }
+        checkResponse(conn)
         return JSONObject(readBody(conn)).getString("sha")
     }
 
@@ -215,6 +224,7 @@ class GitHubApiTransport @Inject constructor(
             put("parents", if (parentSha != null) JSONArray(listOf(parentSha)) else JSONArray())
         }
         DataOutputStream(conn.outputStream).use { it.writeBytes(body.toString()) }
+        checkResponse(conn)
         return JSONObject(readBody(conn)).getString("sha")
     }
 
