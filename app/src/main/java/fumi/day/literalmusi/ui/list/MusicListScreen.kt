@@ -80,7 +80,7 @@ fun MusicListScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Go to Settings and add your music folders",
+                        text = "Go to Settings to import music",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

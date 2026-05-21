@@ -1,10 +1,8 @@
 package fumi.day.literalmusi.ui.settings
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,23 +12,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -63,20 +63,11 @@ fun SettingsScreen(
     val userPrefs by viewModel.userPrefs.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
     val syncResult by viewModel.syncResult.collectAsState()
+    val importProgress by viewModel.importProgress.collectAsState()
+    val mediaStoreSongs by viewModel.mediaStoreSongs.collectAsState()
 
     var showGitDialog by remember { mutableStateOf(false) }
-
-    val folderPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            viewModel.addMusicFolder(uri)
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        viewModel.loadIncludedFolders()
-    }
+    var showMediaStorePicker by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -98,10 +89,11 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            MusicFoldersCard(
-                folders = userPrefs.includedFolderPaths,
-                onAddFolder = { folderPicker.launch(null) },
-                onRemoveFolder = viewModel::removeMusicFolder
+            ImportMusicCard(
+                onImportFromMediaStore = {
+                    viewModel.loadMediaStoreSongs()
+                    showMediaStorePicker = true
+                }
             )
 
             HorizontalDivider()
@@ -131,7 +123,7 @@ fun SettingsScreen(
             )
 
             Text(
-                text = "A minimal music player. Add music folders to start playing.",
+                text = "A minimal music player. All music is stored in the app's internal pile/ folder for seamless sync.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -147,6 +139,56 @@ fun SettingsScreen(
                 showGitDialog = false
             },
             onDismiss = { showGitDialog = false }
+        )
+    }
+
+    if (importProgress.isImporting) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Importing...") },
+            text = {
+                Column {
+                    if (importProgress.total > 0) {
+                        Text("${importProgress.completed} / ${importProgress.total} files")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { importProgress.completed.toFloat() / importProgress.total.toFloat() },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
+                    if (importProgress.errors.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = importProgress.errors.joinToString("\n"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            },
+            confirmButton = { }
+        )
+    }
+
+    if (!importProgress.isImporting && (importProgress.total > 0 || importProgress.errors.isNotEmpty())) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearImportResult() },
+            title = { Text("Import Complete") },
+            text = {
+                Text(
+                    if (importProgress.errors.isEmpty())
+                        "Successfully imported ${importProgress.completed} files."
+                    else
+                        "Imported ${importProgress.completed} files with ${importProgress.errors.size} errors:\n${importProgress.errors.joinToString("\n")}"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearImportResult() }) {
+                    Text("OK")
+                }
+            }
         )
     }
 
@@ -187,81 +229,165 @@ fun SettingsScreen(
             )
         }
     }
+
+    if (showMediaStorePicker && mediaStoreSongs.isNotEmpty()) {
+        MediaStorePickerDialog(
+            songs = mediaStoreSongs,
+            onImport = { selectedUris ->
+                viewModel.importFromMediaStore(selectedUris)
+                showMediaStorePicker = false
+            },
+            onDismiss = { showMediaStorePicker = false }
+        )
+    }
 }
 
 @Composable
-private fun MusicFoldersCard(
-    folders: Set<String>,
-    onAddFolder: () -> Unit,
-    onRemoveFolder: (String) -> Unit
+private fun ImportMusicCard(
+    onImportFromMediaStore: () -> Unit
 ) {
     Card(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Music Folders",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                IconButton(onClick = onAddFolder) {
-                    Icon(Icons.Default.Add, contentDescription = "Add folder")
-                }
-            }
+            Text(
+                text = "Import Music",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (folders.isEmpty()) {
-                Text(
-                    text = "No folders selected. Tap + to add your music folder.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
+            Text(
+                text = "Add music files to your library. Files are copied to the app's internal storage for syncing.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Button(
+                onClick = onImportFromMediaStore,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Import Music")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaStorePickerDialog(
+    songs: List<MediaStoreSong>,
+    onImport: (List<String>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    var showFolderPrompt by remember { mutableStateOf<MediaStoreSong?>(null) }
+
+    val songsByFolder = remember(songs) {
+        songs.groupBy { it.parentFolder }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Music to Import") },
+        text = {
+            if (songs.isEmpty()) {
+                Box(
+                    modifier = Modifier.height(200.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No music found on device.")
+                }
             } else {
-                folders.forEach { path ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { }
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Folder,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                        Text(
-                            text = path,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        IconButton(
-                            onClick = { onRemoveFolder(path) },
-                            modifier = Modifier.size(32.dp)
+                LazyColumn(modifier = Modifier.height(400.dp)) {
+                    items(songs, key = { it.id }) { song ->
+                        val isChecked = song.uri in selected
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (isChecked) {
+                                        selected = selected - song.uri
+                                    } else {
+                                        showFolderPrompt = song
+                                    }
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Remove",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Checkbox(checked = isChecked, onCheckedChange = {
+                                if (isChecked) {
+                                    selected = selected - song.uri
+                                } else {
+                                    showFolderPrompt = song
+                                }
+                            })
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(song.title, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "${song.artist} · ${song.formattedDuration}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    song.parentFolder.substringAfterLast('/'),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
                         }
                     }
                 }
             }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onImport(selected.toList()) },
+                enabled = selected.isNotEmpty()
+            ) {
+                Text("Import (${selected.size})")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
         }
+    )
+
+    showFolderPrompt?.let { song ->
+        val folderName = song.parentFolder.substringAfterLast('/')
+            .ifEmpty { song.parentFolder }
+        AlertDialog(
+            onDismissRequest = { showFolderPrompt = null },
+            title = { Text("Import from folder?") },
+            text = {
+                Text("Also import all songs from \"$folderName\"?")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val folderSongs = songsByFolder[song.parentFolder]?.map { it.uri } ?: emptyList()
+                    selected = selected + folderSongs
+                    showFolderPrompt = null
+                }) {
+                    Text("Yes, import all")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    selected = selected + song.uri
+                    showFolderPrompt = null
+                }) {
+                    Text("Just this song")
+                }
+            }
+        )
     }
 }
 

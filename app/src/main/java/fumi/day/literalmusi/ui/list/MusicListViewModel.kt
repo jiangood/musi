@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import fumi.day.literalmusi.data.player.MusicPlayer
-import fumi.day.literalmusi.data.prefs.UserPreferences
 import fumi.day.literalmusi.data.repository.MusicRepository
 import fumi.day.literalmusi.domain.model.Song
 import kotlinx.coroutines.flow.SharingStarted
@@ -15,8 +14,7 @@ import javax.inject.Inject
 @HiltViewModel
 class MusicListViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
-    private val musicPlayer: MusicPlayer,
-    private val userPreferences: UserPreferences
+    private val musicPlayer: MusicPlayer
 ) : ViewModel() {
 
     val songs: StateFlow<List<Song>> = musicRepository.observeAll()

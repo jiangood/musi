@@ -1,16 +1,17 @@
 package fumi.day.literalmusi.data.repository
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.DocumentsContract
-import android.provider.MediaStore
+import android.provider.OpenableColumns
 import dagger.hilt.android.qualifiers.ApplicationContext
-import fumi.day.literalmusi.data.prefs.UserPreferences
+import fumi.day.literalmusi.data.git.GitTransport
 import fumi.day.literalmusi.domain.model.Song
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import java.io.File
 import javax.inject.Inject
@@ -19,120 +20,102 @@ import javax.inject.Singleton
 @Singleton
 class MusicRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val userPreferences: UserPreferences
+    private val gitTransport: GitTransport
 ) : MusicRepository {
 
-    override fun observeAll(): Flow<List<Song>> = combine(
-        userPreferences.includedFolderPaths,
-        userPreferences.excludedFolderPaths
-    ) { included, excluded ->
-        scanSongs(included, excluded)
+    private val pileDir: File get() = gitTransport.pileDir
+    private val audioExtensions = setOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "opus", "wma")
+
+    override fun observeAll(): Flow<List<Song>> = callbackFlow {
+        trySend(scanPile())
+
+        val observer = object : android.os.FileObserver(pileDir, CREATE or DELETE or MOVED_FROM or MOVED_TO) {
+            override fun onEvent(event: Int, path: String?) {
+                if (path != null && isAudioFileName(path)) {
+                    trySend(scanPile())
+                }
+            }
+        }
+        observer.startWatching()
+        awaitClose { observer.stopWatching() }
     }.flowOn(Dispatchers.IO)
 
-    private fun scanSongs(included: Set<String>, excluded: Set<String>): List<Song> {
-        if (included.isEmpty()) return emptyList()
-
-        val songs = mutableListOf<Song>()
-        val projection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.ALBUM,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.DATA,
-            MediaStore.Audio.Media.DATE_MODIFIED,
-            MediaStore.Audio.Media.IS_MUSIC
-        )
-
-        val selection = buildSelection(included, excluded)
-        val selectionArgs = buildSelectionArgs(included, excluded)
-
-        context.contentResolver.query(
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            "${MediaStore.Audio.Media.TITLE} ASC"
-        )?.use { cursor ->
-            val idCol = cursor.getColumnIndex(MediaStore.Audio.Media._ID)
-            val titleCol = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE)
-            val artistCol = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST)
-            val albumCol = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM)
-            val durationCol = cursor.getColumnIndex(MediaStore.Audio.Media.DURATION)
-            val dataCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
-            val dateCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATE_MODIFIED)
-            val isMusicCol = cursor.getColumnIndex(MediaStore.Audio.Media.IS_MUSIC)
-
-            while (cursor.moveToNext()) {
-                val data = cursor.getString(dataCol) ?: continue
-                val dir = File(data).parent
-                if (dir != null && dir in excluded) continue
-
-                val duration = cursor.getLong(durationCol)
-                if (duration < 30000) continue
-
-                val artist = cursor.getString(artistCol) ?: ""
-                val album = cursor.getString(albumCol) ?: ""
-                val title = cursor.getString(titleCol) ?: ""
-
-                songs.add(
-                    Song(
-                        id = cursor.getLong(idCol),
-                        title = title.ifBlank { File(data).nameWithoutExtension },
-                        artist = artist.ifBlank { "Unknown Artist" },
-                        album = album.ifBlank { "Unknown Album" },
-                        duration = duration,
-                        uri = data,
-                        dataModified = cursor.getLong(dateCol) * 1000
-                    )
-                )
-            }
-        }
-        return songs
+    private fun scanPile(): List<Song> {
+        if (!pileDir.exists()) return emptyList()
+        return pileDir.listFiles()
+            ?.filter { it.isFile && isAudioFileName(it.name) }
+            ?.sortedBy { it.name }
+            ?.mapNotNull { file -> extractSong(file) }
+            ?: emptyList()
     }
 
-    private fun buildSelection(included: Set<String>, excluded: Set<String>): String {
-        val parts = mutableListOf<String>()
-        parts.add("${MediaStore.Audio.Media.DURATION} >= 30000")
-
-        if (included.isNotEmpty()) {
-            val orClauses = included.map { "${MediaStore.Audio.Media.DATA} LIKE ?" }
-            parts.add("(${orClauses.joinToString(" OR ")})")
-        }
-
-        return parts.joinToString(" AND ")
-    }
-
-    private fun buildSelectionArgs(included: Set<String>, excluded: Set<String>): Array<String> {
-        val args = mutableListOf<String>()
-        included.forEach { path ->
-            args.add("${File(path)}/%")
-        }
-        return args.toTypedArray()
-    }
-
-    fun convertTreeUriToPath(uri: Uri): String? {
+    private fun extractSong(file: File): Song? {
+        val retriever = MediaMetadataRetriever()
         return try {
-            val docId = DocumentsContract.getTreeDocumentId(uri)
-            val split = docId.split(":")
-            if (split.size >= 2 && split[0] == "primary") {
-                "/storage/emulated/0/${split[1]}"
-            } else if (split.size >= 2) {
-                "/storage/${split[0]}/${split[1]}"
-            } else {
-                null
-            }
+            retriever.setDataSource(file.absolutePath)
+            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                ?.takeIf { it.isNotBlank() } ?: file.nameWithoutExtension
+            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                ?.takeIf { it.isNotBlank() } ?: "Unknown Artist"
+            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                ?.takeIf { it.isNotBlank() } ?: "Unknown Album"
+            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: 0L
+            Song(
+                id = file.absolutePath.hashCode().toLong() and 0xFFFFFFFFL,
+                title = title,
+                artist = artist,
+                album = album,
+                duration = duration,
+                uri = file.absolutePath,
+                dataModified = file.lastModified()
+            )
         } catch (e: Exception) {
             null
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
         }
     }
 
-    fun isAudioFile(uri: Uri): Boolean {
-        return try {
-            val mimeType = context.contentResolver.getType(uri) ?: ""
-            mimeType.startsWith("audio/")
-        } catch (e: Exception) {
-            false
+    private fun isAudioFileName(name: String): Boolean {
+        return name.substringAfterLast('.', "").lowercase() in audioExtensions
+    }
+
+    suspend fun addFilesToPile(uris: List<Uri>, deleteSource: Boolean = false): List<String> {
+        val errors = mutableListOf<String>()
+        for (uri in uris) {
+            try {
+                val fileName = getFileName(uri) ?: "track_${System.currentTimeMillis()}"
+                val destFile = File(pileDir, fileName)
+                if (destFile.exists()) {
+                    errors.add("$fileName already exists in your music library")
+                    continue
+                }
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    destFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                if (deleteSource) {
+                    try { context.contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                }
+            } catch (e: Exception) {
+                errors.add("Failed to import file: ${e.message}")
+            }
         }
+        return errors
+    }
+
+    private fun getFileName(uri: Uri): String? {
+        var name: String? = null
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0) {
+                    name = cursor.getString(nameIndex)
+                }
+            }
+        }
+        return name ?: uri.lastPathSegment
     }
 }
