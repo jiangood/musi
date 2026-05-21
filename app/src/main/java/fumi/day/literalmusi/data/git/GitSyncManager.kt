@@ -115,7 +115,7 @@ class GitSyncManager @Inject constructor(
                 errors = errors
             )
         } catch (e: Exception) {
-            errors.add(e.message ?: "Sync failed")
+            errors.add("${e.javaClass.simpleName}: ${e.message ?: "Sync failed"}")
             return SyncResult(errors = errors)
         }
     }
@@ -181,7 +181,7 @@ class GitSyncManager @Inject constructor(
                 errors = errors
             )
         } catch (e: Exception) {
-            errors.add(e.message ?: "Merge failed")
+            errors.add("${e.javaClass.simpleName}: ${e.message ?: "Merge failed"}")
             return SyncResult(errors = errors)
         }
     }
