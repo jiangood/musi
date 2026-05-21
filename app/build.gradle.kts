@@ -1,6 +1,7 @@
 import com.android.build.gradle.internal.api.ApkVariantOutputImpl
 import java.util.Properties
 
+val appVersionName = "1.0.8"
 val localProperties = Properties()
 val localPropertiesFile: File = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
@@ -52,7 +53,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 8
-        versionName = "1.0.8"
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -94,7 +95,7 @@ android {
     applicationVariants.configureEach {
         outputs.configureEach {
             if (this is ApkVariantOutputImpl) {
-                outputFileName = "musi-v${this@configureEach.versionName}.apk"
+                outputFileName = "musi-v${appVersionName}.apk"
             }
         }
     }
