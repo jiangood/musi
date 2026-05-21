@@ -71,6 +71,11 @@ class SettingsViewModel @Inject constructor(
 
     val isSyncing: StateFlow<Boolean> = syncManager.isSyncing
 
+    val lastSyncError: StateFlow<String?> = syncManager.syncError
+
+    private val _pendingOpsCount = MutableStateFlow(0)
+    val pendingOpsCount: StateFlow<Int> = _pendingOpsCount.asStateFlow()
+
     private val _syncResult = MutableStateFlow<SyncResult?>(null)
     val syncResult: StateFlow<SyncResult?> = _syncResult.asStateFlow()
 
@@ -82,6 +87,10 @@ class SettingsViewModel @Inject constructor(
 
     private var pendingToken: String = ""
     private var pendingRepo: String = ""
+
+    init {
+        _pendingOpsCount.value = opLog.pendingCount()
+    }
 
     val mediaStoreSongs: MutableStateFlow<List<MediaStoreSong>> = MutableStateFlow(emptyList())
 
@@ -161,6 +170,7 @@ class SettingsViewModel @Inject constructor(
             }
 
             _importProgress.value = ImportProgress(total, completed, errors, false)
+            _pendingOpsCount.value = _pendingOpsCount.value + completed
         }
     }
 
@@ -247,6 +257,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _syncResult.value = null
             _syncResult.value = syncManager.syncAndAwait()
+            _pendingOpsCount.value = 0
         }
     }
 

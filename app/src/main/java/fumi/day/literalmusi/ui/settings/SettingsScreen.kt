@@ -1,7 +1,10 @@
 package fumi.day.literalmusi.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -55,6 +58,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import fumi.day.literalmusi.BuildConfig
+import fumi.day.literalmusi.data.git.SyncResult
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,11 +70,14 @@ fun SettingsScreen(
     val isSyncing by viewModel.isSyncing.collectAsState()
     val syncResult by viewModel.syncResult.collectAsState()
     val importProgress by viewModel.importProgress.collectAsState()
+    val lastSyncError by viewModel.lastSyncError.collectAsState()
+    val pendingOpsCount by viewModel.pendingOpsCount.collectAsState()
     val showOverwriteConfirm by viewModel.showOverwriteConfirm.collectAsState()
     val mediaStoreSongs by viewModel.mediaStoreSongs.collectAsState()
 
     var showGitDialog by remember { mutableStateOf(false) }
     var showMediaStorePicker by remember { mutableStateOf(false) }
+    var showSyncStatusDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -109,6 +116,16 @@ fun SettingsScreen(
                 onSyncNowClick = viewModel::syncNow,
                 onEditClick = { showGitDialog = true },
                 onDisconnectClick = viewModel::disconnectGitHub
+            )
+
+            HorizontalDivider()
+
+            SyncStatusCard(
+                isSyncing = isSyncing,
+                lastSyncedAt = userPrefs.lastSyncedAt,
+                lastSyncError = lastSyncError,
+                pendingOpsCount = pendingOpsCount,
+                onClick = { showSyncStatusDialog = true }
             )
 
             HorizontalDivider()
@@ -255,6 +272,17 @@ fun SettingsScreen(
         }
     }
 
+    if (showSyncStatusDialog) {
+        SyncStatusDialog(
+            isSyncing = isSyncing,
+            lastSyncedAt = userPrefs.lastSyncedAt,
+            lastSyncError = lastSyncError,
+            pendingOpsCount = pendingOpsCount,
+            syncResult = syncResult,
+            onDismiss = { showSyncStatusDialog = false }
+        )
+    }
+
     if (showMediaStorePicker && mediaStoreSongs.isNotEmpty()) {
         MediaStorePickerDialog(
             songs = mediaStoreSongs,
@@ -371,60 +399,186 @@ private fun MediaStorePickerDialog(
                                         "$selectedInFolder / ${folderSongs.size}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
+    )
+}
 
-                        if (isExpanded) {
-                            items(folderSongs, key = { it.id }) { song ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            selected = if (song.uri in selected) selected - song.uri
-                                            else selected + song.uri
-                                        }
-                                        .padding(start = 48.dp, top = 2.dp, bottom = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Checkbox(
-                                        checked = song.uri in selected,
-                                        onCheckedChange = {
-                                            selected = if (song.uri in selected) selected - song.uri
-                                            else selected + song.uri
-                                        }
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(song.title, style = MaterialTheme.typography.bodyMedium)
-                                        Text(
-                                            "${song.artist} · ${song.formattedDuration}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
+@Composable
+private fun SyncStatusCard(
+    isSyncing: Boolean,
+    lastSyncedAt: Long?,
+    lastSyncError: String?,
+    pendingOpsCount: Int,
+    onClick: () -> Unit
+) {
+    val (statusText, statusColor) = when {
+        isSyncing -> "Syncing..." to MaterialTheme.colorScheme.tertiary
+        lastSyncError != null -> "Error" to MaterialTheme.colorScheme.error
+        pendingOpsCount > 0 -> "Pending" to Color(0xFFFFA000)
+        lastSyncedAt != null -> "Synced" to Color(0xFF4CAF50)
+        else -> "Not connected" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Card(
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Sync Status",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isSyncing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(statusColor)
+                        )
                     }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = statusColor
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = if (isSyncing) "Syncing in progress..."
+                       else "Last synced: ${formatRelativeTime(lastSyncedAt)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (pendingOpsCount > 0 && !isSyncing) {
+                Text(
+                    text = "Pending operations: $pendingOpsCount",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Text(
+                text = "Tap for details",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.End)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncStatusDialog(
+    isSyncing: Boolean,
+    lastSyncedAt: Long?,
+    lastSyncError: String?,
+    pendingOpsCount: Int,
+    syncResult: SyncResult?,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sync Status") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Status: ${
+                        when {
+                            isSyncing -> "Syncing..."
+                            lastSyncError != null -> "Error"
+                            pendingOpsCount > 0 -> "Pending"
+                            lastSyncedAt != null -> "Synced"
+                            else -> "Not connected"
+                        }
+                    }",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "Last synced: ${formatRelativeTime(lastSyncedAt)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (lastSyncError != null) {
+                    Text(
+                        text = "Error: $lastSyncError",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                if (syncResult != null && !isSyncing) {
+                    Text(
+                        text = "Uploaded: ${syncResult.uploaded} files",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Downloaded: ${syncResult.downloaded} files",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (syncResult.errors.isNotEmpty()) {
+                        Text(
+                            text = "Errors: ${syncResult.errors.joinToString("\n")}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                if (pendingOpsCount > 0) {
+                    Text(
+                        text = "Pending operations: $pendingOpsCount",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (lastSyncError != null) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = { onImport(selected.toList()) },
-                enabled = selected.isNotEmpty()
-            ) {
-                Text("Import (${selected.size})")
-            }
-        },
-        dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Close")
             }
         }
     )
+}
+
+private fun formatRelativeTime(timestamp: Long?): String {
+    if (timestamp == null) return "Never"
+    val now = System.currentTimeMillis()
+    val diff = now - timestamp
+    val seconds = diff / 1000
+    val minutes = seconds / 60
+    val hours = minutes / 60
+    val days = hours / 24
+    return when {
+        seconds < 60 -> "Just now"
+        minutes < 60 -> "${minutes}m ago"
+        hours < 24 -> "${hours}h ago"
+        days < 7 -> "${days}d ago"
+        else -> {
+            val cal = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
+            "${cal.get(java.util.Calendar.MONTH) + 1}/${cal.get(java.util.Calendar.DAY_OF_MONTH)}/${cal.get(java.util.Calendar.YEAR)}"
+        }
+    }
 }
 
 @Composable
