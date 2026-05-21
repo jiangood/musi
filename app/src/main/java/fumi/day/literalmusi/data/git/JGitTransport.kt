@@ -33,6 +33,9 @@ class JGitTransport @Inject constructor(
             git = if (gitDir.exists()) {
                 Git.open(repoDir)
             } else {
+                if (repoDir.exists()) {
+                    repoDir.deleteRecursively()
+                }
                 Git.cloneRepository()
                     .setURI("https://github.com/$repo.git")
                     .setDirectory(repoDir)
