@@ -1,5 +1,9 @@
 package fumi.day.literalmusi.ui.settings
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,10 +13,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -31,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,11 +48,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import fumi.day.literalmusi.BuildConfig
-import fumi.day.literalmusi.data.prefs.UserPrefs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +65,18 @@ fun SettingsScreen(
     val syncResult by viewModel.syncResult.collectAsState()
 
     var showGitDialog by remember { mutableStateOf(false) }
+
+    val folderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.addMusicFolder(uri)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadIncludedFolders()
+    }
 
     Scaffold(
         topBar = {
@@ -77,6 +98,14 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            MusicFoldersCard(
+                folders = userPrefs.includedFolderPaths,
+                onAddFolder = { folderPicker.launch(null) },
+                onRemoveFolder = viewModel::removeMusicFolder
+            )
+
+            HorizontalDivider()
+
             GitSyncCard(
                 userPrefs = userPrefs,
                 isSyncing = isSyncing,
@@ -102,13 +131,7 @@ fun SettingsScreen(
             )
 
             Text(
-                text = "A minimal music player that plays audio files from your device.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Text(
-                text = "Supported: MP3, FLAC, OGG, WAV, Opus, and other formats.",
+                text = "A minimal music player. Add music folders to start playing.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -167,8 +190,84 @@ fun SettingsScreen(
 }
 
 @Composable
+private fun MusicFoldersCard(
+    folders: Set<String>,
+    onAddFolder: () -> Unit,
+    onRemoveFolder: (String) -> Unit
+) {
+    Card(
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Music Folders",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                IconButton(onClick = onAddFolder) {
+                    Icon(Icons.Default.Add, contentDescription = "Add folder")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (folders.isEmpty()) {
+                Text(
+                    text = "No folders selected. Tap + to add your music folder.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            } else {
+                folders.forEach { path ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Text(
+                            text = path,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = { onRemoveFolder(path) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Remove",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun GitSyncCard(
-    userPrefs: UserPrefs,
+    userPrefs: fumi.day.literalmusi.data.prefs.UserPrefs,
     isSyncing: Boolean,
     accentColor: Color,
     onConnectClick: () -> Unit,

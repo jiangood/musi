@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,16 +25,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SearchBar
-import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,17 +45,11 @@ fun MusicListScreen(
     viewModel: MusicListViewModel = hiltViewModel()
 ) {
     val songs by viewModel.songs.collectAsState()
-    val searchQuery by viewModel.searchQuery.collectAsState()
-    var searchText by remember { mutableStateOf("") }
-    var searchActive by remember { mutableStateOf(false) }
-
-    val filteredSongs = if (searchQuery.isBlank()) songs
-    else songs.filter { it.title.contains(searchQuery, ignoreCase = true) || it.artist.contains(searchQuery, ignoreCase = true) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Music") },
+                title = { Text("Musi") },
                 actions = {
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -67,55 +58,45 @@ fun MusicListScreen(
             )
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            SearchBar(
-                inputField = {
-                    SearchBarDefaults.InputField(
-                        query = searchText,
-                        onQueryChange = {
-                            searchText = it
-                            viewModel.updateSearch(it)
-                        },
-                        onSearch = { searchActive = false },
-                        expanded = searchActive,
-                        onExpandedChange = { searchActive = it },
-                        placeholder = { Text("Search songs...") },
-                        leadingIcon = { Icon(Icons.Default.MusicNote, contentDescription = null) }
-                    )
-                },
-                expanded = searchActive,
-                onExpandedChange = { searchActive = it },
+        if (songs.isEmpty()) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center
             ) {
-            }
-
-            if (filteredSongs.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = if (songs.isEmpty()) "No music found on device" else "No results",
-                        style = MaterialTheme.typography.bodyLarge,
+                        text = "No music yet",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Go to Settings and add your music folders",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            } else {
+            }
+        } else {
+            Column(modifier = Modifier.padding(paddingValues)) {
                 Text(
-                    text = "${filteredSongs.size} songs",
+                    text = "${songs.size} songs",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
 
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(filteredSongs, key = { _, s -> s.id }) { _, song ->
+                    itemsIndexed(songs, key = { _, s -> s.id }) { _, song ->
                         SongItem(
                             song = song,
                             onClick = {
@@ -123,9 +104,7 @@ fun MusicListScreen(
                                 onNavigateToPlayer()
                             }
                         )
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                     item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
