@@ -110,6 +110,12 @@ class MusicPlayer @Inject constructor(
         player.seekToNextMediaItem()
     }
 
+    fun stop() {
+        player.stop()
+        currentQueue = emptyList()
+        _state.value = PlayerState()
+    }
+
     fun skipToPrevious() {
         if (player.currentPosition > 3000) {
             player.seekTo(0)

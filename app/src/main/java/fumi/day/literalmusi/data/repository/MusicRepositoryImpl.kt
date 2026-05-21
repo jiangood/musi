@@ -16,6 +16,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 import javax.inject.Inject
@@ -114,6 +115,21 @@ class MusicRepositoryImpl @Inject constructor(
             }
         }
         return errors
+    }
+
+    override suspend fun deleteSong(song: Song) = withContext(Dispatchers.IO) {
+        val file = File(song.uri)
+        if (!file.exists()) return@withContext
+
+        val trash = gitTransport.trashDir
+        trash.mkdirs()
+        file.renameTo(File(trash, file.name))
+
+        opLog.append(Operation(
+            id = UUID.randomUUID().toString(),
+            type = OpType.DELETE,
+            path = "pile/${file.name}"
+        ))
     }
 
     private fun getFileName(uri: Uri): String? {
