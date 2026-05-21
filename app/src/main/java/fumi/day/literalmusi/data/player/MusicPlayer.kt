@@ -2,6 +2,8 @@ package fumi.day.literalmusi.data.player
 
 import android.content.Context
 import android.net.Uri
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -32,7 +34,17 @@ data class PlayerState(
 class MusicPlayer @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    private val player: ExoPlayer = ExoPlayer.Builder(context).build()
+    private val player: ExoPlayer = ExoPlayer.Builder(context)
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build(),
+            /* handleAudioFocus = */ true
+        )
+        .setLoudnessEnhancerEnabled(true)
+        .setSkipSilenceEnabled(false)
+        .build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private val _state = MutableStateFlow(PlayerState())
