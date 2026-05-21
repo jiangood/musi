@@ -14,8 +14,10 @@ import fumi.day.literalmusi.domain.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
@@ -31,6 +33,7 @@ class MusicRepositoryImpl @Inject constructor(
 
     private val pileDir: File get() = gitTransport.pileDir
     private val audioExtensions = setOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "opus", "wma")
+    private val _refresh = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     override fun observeAll(): Flow<List<Song>> = callbackFlow {
         trySend(scanPile())
@@ -43,7 +46,15 @@ class MusicRepositoryImpl @Inject constructor(
             }
         }
         observer.startWatching()
-        awaitClose { observer.stopWatching() }
+
+        val refreshJob = launch {
+            _refresh.collect { trySend(scanPile()) }
+        }
+
+        awaitClose {
+            observer.stopWatching()
+            refreshJob.cancel()
+        }
     }.flowOn(Dispatchers.IO)
 
     private fun scanPile(): List<Song> {
@@ -130,6 +141,8 @@ class MusicRepositoryImpl @Inject constructor(
             type = OpType.DELETE,
             path = "pile/${file.name}"
         ))
+
+        _refresh.tryEmit(Unit)
     }
 
     private fun getFileName(uri: Uri): String? {
