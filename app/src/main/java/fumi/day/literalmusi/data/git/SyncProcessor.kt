@@ -7,15 +7,8 @@ import javax.inject.Singleton
 class SyncProcessor @Inject constructor(
     private val gitTransport: GitTransport
 ) {
-    suspend fun process(): SyncResult {
-        var uploaded = 0
-        var errors = emptyList<String>()
-
-        try {
-            uploaded = gitTransport.commit("sync")
-        } catch (e: Exception) {
-            errors = listOf("${e.javaClass.simpleName}: ${e.message}")
-        }
+    suspend fun process(knownShas: Map<String, String> = emptyMap(), lastSyncedAt: Long? = null): SyncResult {
+        val errors = mutableListOf<String>()
 
         val pullResult = try {
             gitTransport.pull()
@@ -23,10 +16,20 @@ class SyncProcessor @Inject constructor(
             PullResult(filesDownloaded = 0)
         }
 
+        val commitResult = try {
+            gitTransport.commit("sync", knownShas, lastSyncedAt)
+        } catch (e: Exception) {
+            errors.add("${e.javaClass.simpleName}: ${e.message}")
+            CommitResult()
+        }
+
+        errors.addAll(commitResult.errors)
+
         return SyncResult(
-            uploaded = uploaded,
+            uploaded = commitResult.uploaded,
             downloaded = pullResult.filesDownloaded,
-            errors = errors + pullResult.conflicts
+            errors = errors + pullResult.conflicts,
+            newShas = commitResult.newShas
         )
     }
 }

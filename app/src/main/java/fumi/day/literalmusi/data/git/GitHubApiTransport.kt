@@ -2,8 +2,6 @@ package fumi.day.literalmusi.data.git
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -12,7 +10,10 @@ import java.io.File
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
 import java.util.Base64
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -67,24 +68,53 @@ class GitHubApiTransport @Inject constructor(
         return (local - remoteFiles.keys).size
     }
 
-    override suspend fun commit(message: String): Int {
+    override suspend fun commit(message: String, knownShas: Map<String, String>, lastSyncedAt: Long?): CommitResult {
         val localFiles = pileDir.listFiles()?.associateBy { it.name } ?: emptyMap()
         val localPileNames = localFiles.keys
         val trashNames = trashDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
         val remoteNames = remoteFiles.keys
 
-        val toUpload = localPileNames - remoteNames
+        val skipped = mutableSetOf<String>()
         val toDelete = remoteNames.intersect(trashNames)
-        val toKeep = localPileNames.intersect(remoteNames)
+        val toUpload = mutableSetOf<String>()
+        toUpload.addAll(localPileNames - remoteNames)
 
-        val changed = toUpload.size + toDelete.size
-        if (changed == 0) return 0
+        val errors = mutableListOf<String>()
+        var uploaded = 0
+        val newShas = mutableMapOf<String, String>()
+
+        for (name in localPileNames.intersect(remoteNames)) {
+            val file = localFiles[name] ?: continue
+            val remoteSha = remoteFiles[name]?.sha ?: continue
+            val knownSha = knownShas[name]
+
+            val localChanged = file.lastModified() > (lastSyncedAt ?: 0L)
+            val remoteChanged = knownSha != null && knownSha != remoteSha
+
+            when {
+                !localChanged && !remoteChanged -> skipped.add(name)
+                localChanged && !remoteChanged -> toUpload.add(name)
+                !localChanged && remoteChanged -> {
+                    file.delete()
+                    skipped.add(name)
+                }
+                else -> {
+                    val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                    val conflictName = "${name}_conflict_$ts"
+                    file.renameTo(File(pileDir, conflictName))
+                    skipped.add(name)
+                    errors.add("Conflict: $name renamed to $conflictName")
+                }
+            }
+        }
+
+        if (toUpload.isEmpty() && toDelete.isEmpty()) return CommitResult(newShas = knownShas, errors = errors)
 
         ensureRepoInitialized()
 
         val entries = mutableListOf<JSONObject>()
 
-        for (name in toKeep) {
+        for (name in localPileNames.intersect(remoteNames) - skipped) {
             remoteFiles[name]?.let { info ->
                 entries.add(JSONObject().apply {
                     put("path", "pile/$name")
@@ -92,19 +122,28 @@ class GitHubApiTransport @Inject constructor(
                     put("type", "blob")
                     put("sha", info.sha)
                 })
+                newShas[name] = info.sha
             }
         }
 
         for (name in toUpload) {
             val file = localFiles[name] ?: continue
-            val sha = createBlob(file.readBytes())
-            entries.add(JSONObject().apply {
-                put("path", "pile/$name")
-                put("mode", "100644")
-                put("type", "blob")
-                put("sha", sha)
-            })
+            try {
+                val sha = createBlob(file.readBytes())
+                entries.add(JSONObject().apply {
+                    put("path", "pile/$name")
+                    put("mode", "100644")
+                    put("type", "blob")
+                    put("sha", sha)
+                })
+                newShas[name] = sha
+                uploaded++
+            } catch (e: Exception) {
+                errors.add("Upload $name failed: ${e.message}")
+            }
         }
+
+        if (entries.isEmpty()) return CommitResult(uploaded = uploaded, newShas = newShas + knownShas, errors = errors)
 
         val treeSha = createTree(entries)
         val parentSha = getRefSha()
@@ -112,7 +151,7 @@ class GitHubApiTransport @Inject constructor(
         updateRef(commitSha)
 
         remoteFiles = listRemoteFiles()
-        return changed
+        return CommitResult(uploaded = uploaded, newShas = newShas + knownShas, errors = errors)
     }
 
     override suspend fun push(): Boolean = true

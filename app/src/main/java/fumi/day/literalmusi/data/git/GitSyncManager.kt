@@ -16,7 +16,8 @@ import javax.inject.Singleton
 data class SyncResult(
     val uploaded: Int = 0,
     val downloaded: Int = 0,
-    val errors: List<String> = emptyList()
+    val errors: List<String> = emptyList(),
+    val newShas: Map<String, String> = emptyMap()
 )
 
 @Singleton
@@ -52,11 +53,13 @@ class GitSyncManager @Inject constructor(
             _syncError.value = null
             try {
                 gitTransport.ensureInitialized(prefs.gitHubToken, prefs.gitHubRepo)
-                val result = syncProcessor.process()
+                val result = syncProcessor.process(prefs.lastSyncedShas, prefs.lastSyncedAt)
                 if (result.errors.isNotEmpty()) {
                     _syncError.value = result.errors.first()
+                } else {
+                    userPreferences.setLastSyncedAt(System.currentTimeMillis())
+                    userPreferences.setLastSyncedShas(result.newShas)
                 }
-                userPreferences.setLastSyncedAt(System.currentTimeMillis())
                 result
             } catch (e: Exception) {
                 val msg = "${e.javaClass.simpleName}: ${e.message ?: "Sync failed"}"
