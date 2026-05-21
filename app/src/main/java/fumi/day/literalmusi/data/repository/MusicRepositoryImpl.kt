@@ -7,6 +7,9 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import dagger.hilt.android.qualifiers.ApplicationContext
 import fumi.day.literalmusi.data.git.GitTransport
+import fumi.day.literalmusi.data.git.OpLog
+import fumi.day.literalmusi.data.git.OpType
+import fumi.day.literalmusi.data.git.Operation
 import fumi.day.literalmusi.domain.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -14,13 +17,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import java.io.File
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class MusicRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val gitTransport: GitTransport
+    private val gitTransport: GitTransport,
+    private val opLog: OpLog
 ) : MusicRepository {
 
     private val pileDir: File get() = gitTransport.pileDir
@@ -96,6 +101,11 @@ class MusicRepositoryImpl @Inject constructor(
                         input.copyTo(output)
                     }
                 }
+                opLog.append(Operation(
+                    id = UUID.randomUUID().toString(),
+                    type = OpType.ADD,
+                    path = "pile/$fileName"
+                ))
                 if (deleteSource) {
                     try { context.contentResolver.delete(uri, null, null) } catch (_: Exception) {}
                 }

@@ -7,7 +7,11 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import fumi.day.literalmusi.data.git.GitSyncManager
+import fumi.day.literalmusi.data.git.OpLog
+import fumi.day.literalmusi.data.git.Operation
+import fumi.day.literalmusi.data.git.OpType
 import fumi.day.literalmusi.data.git.SyncResult
+import fumi.day.literalmusi.data.git.SyncScheduler
 import fumi.day.literalmusi.data.prefs.UserPreferences
 import fumi.day.literalmusi.data.prefs.UserPrefs
 import fumi.day.literalmusi.data.repository.MusicRepository
@@ -21,6 +25,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.UUID
 import javax.inject.Inject
 
 data class ImportProgress(
@@ -52,7 +57,9 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val userPreferences: UserPreferences,
     private val syncManager: GitSyncManager,
-    private val musicRepository: MusicRepository
+    private val musicRepository: MusicRepository,
+    private val opLog: OpLog,
+    private val syncScheduler: SyncScheduler
 ) : ViewModel() {
 
     val userPrefs: StateFlow<UserPrefs> = userPreferences.userPrefs
@@ -139,6 +146,12 @@ class SettingsViewModel @Inject constructor(
 
                     try {
                         srcFile.copyTo(destFile, overwrite = false)
+                        opLog.append(Operation(
+                            id = UUID.randomUUID().toString(),
+                            type = OpType.ADD,
+                            path = "pile/$fileName"
+                        ))
+                        syncScheduler.onOperationEnqueued()
                     } catch (e: Exception) {
                         errors.add("Failed to import $fileName: ${e.message}")
                     }
