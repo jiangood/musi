@@ -399,6 +399,59 @@ private fun MediaStorePickerDialog(
                                         "$selectedInFolder / ${folderSongs.size}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        if (isExpanded) {
+                            items(folderSongs, key = { it.id }) { song ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            selected = if (song.uri in selected) selected - song.uri
+                                            else selected + song.uri
+                                        }
+                                        .padding(start = 48.dp, top = 2.dp, bottom = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = song.uri in selected,
+                                        onCheckedChange = {
+                                            selected = if (song.uri in selected) selected - song.uri
+                                            else selected + song.uri
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(song.title, style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            "${song.artist} · ${song.formattedDuration}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onImport(selected.toList()) },
+                enabled = selected.isNotEmpty()
+            ) {
+                Text("Import (${selected.size})")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
     )
 }
 
