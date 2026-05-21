@@ -66,6 +66,7 @@ fun SettingsScreen(
     val isSyncing by viewModel.isSyncing.collectAsState()
     val syncResult by viewModel.syncResult.collectAsState()
     val importProgress by viewModel.importProgress.collectAsState()
+    val showOverwriteConfirm by viewModel.showOverwriteConfirm.collectAsState()
     val mediaStoreSongs by viewModel.mediaStoreSongs.collectAsState()
 
     var showGitDialog by remember { mutableStateOf(false) }
@@ -141,6 +142,28 @@ fun SettingsScreen(
                 showGitDialog = false
             },
             onDismiss = { showGitDialog = false }
+        )
+    }
+
+    if (showOverwriteConfirm) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Local data found") },
+            text = {
+                Text("Local music data already exists. How would you like to proceed?")
+            },
+            confirmButton = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TextButton(onClick = { viewModel.confirmOverwrite() }) {
+                        Text("Overwrite")
+                    }
+                    TextButton(onClick = { viewModel.confirmMerge() }) {
+                        Text("Merge")
+                    }
+                }
+            }
         )
     }
 

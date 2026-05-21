@@ -58,6 +58,21 @@ class GitSyncManager @Inject constructor(
         }
     }
 
+    suspend fun mergeAndAwait(): SyncResult? {
+        if (_isSyncing.value) return null
+        _isSyncing.value = true
+        _syncError.value = null
+        return try {
+            val result = mergeIfEnabled()
+            if (result != null && result.errors.isNotEmpty()) {
+                _syncError.value = result.errors.first()
+            }
+            result
+        } finally {
+            _isSyncing.value = false
+        }
+    }
+
     fun clearLocalData() {
         gitTransport.close()
         File(context.filesDir, "repo").deleteRecursively()
@@ -101,6 +116,72 @@ class GitSyncManager @Inject constructor(
             )
         } catch (e: Exception) {
             errors.add(e.message ?: "Sync failed")
+            return SyncResult(errors = errors)
+        }
+    }
+
+    private suspend fun mergeIfEnabled(): SyncResult? {
+        val prefs = userPreferences.userPrefs.first()
+        if (!prefs.gitHubEnabled || prefs.gitHubToken.isBlank() || prefs.gitHubRepo.isBlank()) {
+            return null
+        }
+
+        val errors = mutableListOf<String>()
+        val repoDir = File(context.filesDir, "repo")
+        val tempDir = File(context.filesDir, "repo_tmp")
+
+        try {
+            gitTransport.close()
+
+            if (tempDir.exists()) {
+                tempDir.deleteRecursively()
+            }
+
+            if (repoDir.exists()) {
+                repoDir.renameTo(tempDir)
+            }
+
+            gitTransport.ensureInitialized(prefs.gitHubToken, prefs.gitHubRepo)
+
+            val tempPile = File(tempDir, "pile")
+            val pileDir = File(repoDir, "pile").also { it.mkdirs() }
+            if (tempPile.exists()) {
+                tempPile.listFiles()?.forEach { file ->
+                    val dest = File(pileDir, file.name)
+                    if (!dest.exists()) {
+                        file.copyTo(dest)
+                    }
+                }
+            }
+
+            tempDir.deleteRecursively()
+
+            val pullResult = gitTransport.pull()
+            val uploaded = gitTransport.stageAll()
+
+            if (uploaded > 0 || pullResult.filesDownloaded > 0) {
+                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                gitTransport.commit("sync: $timestamp")
+
+                val pushOk = gitTransport.push()
+                if (!pushOk) {
+                    errors.add("Push failed")
+                }
+            }
+
+            if (pullResult.conflicts.isNotEmpty()) {
+                errors.add("Resolved ${pullResult.conflicts.size} conflict(s): ${pullResult.conflicts.joinToString(", ")}")
+            }
+
+            userPreferences.setLastSyncedAt(System.currentTimeMillis())
+
+            return SyncResult(
+                uploaded = uploaded,
+                downloaded = pullResult.filesDownloaded,
+                errors = errors
+            )
+        } catch (e: Exception) {
+            errors.add(e.message ?: "Merge failed")
             return SyncResult(errors = errors)
         }
     }

@@ -70,6 +70,12 @@ class SettingsViewModel @Inject constructor(
     private val _importProgress = MutableStateFlow(ImportProgress())
     val importProgress: StateFlow<ImportProgress> = _importProgress.asStateFlow()
 
+    private val _showOverwriteConfirm = MutableStateFlow(false)
+    val showOverwriteConfirm: StateFlow<Boolean> = _showOverwriteConfirm.asStateFlow()
+
+    private var pendingToken: String = ""
+    private var pendingRepo: String = ""
+
     val mediaStoreSongs: MutableStateFlow<List<MediaStoreSong>> = MutableStateFlow(emptyList())
 
     fun loadMediaStoreSongs() {
@@ -152,8 +158,15 @@ class SettingsViewModel @Inject constructor(
     fun saveGitConfig(token: String, repo: String) {
         viewModelScope.launch {
             val current = userPreferences.userPrefs.first()
-            val repoChanged = current.gitHubRepo.isNotBlank() && repo != current.gitHubRepo
+            val repoChanged = repo.isNotBlank() && repo != current.gitHubRepo
             if (repoChanged) {
+                val repoDir = File(context.filesDir, "repo")
+                if (repoDir.exists()) {
+                    pendingToken = token
+                    pendingRepo = repo
+                    _showOverwriteConfirm.value = true
+                    return@launch
+                }
                 syncManager.clearLocalData()
                 userPreferences.resetSyncState()
             }
@@ -166,6 +179,46 @@ class SettingsViewModel @Inject constructor(
                 syncNow()
             }
         }
+    }
+
+    fun confirmOverwrite() {
+        viewModelScope.launch {
+            _showOverwriteConfirm.value = false
+            syncManager.clearLocalData()
+            userPreferences.resetSyncState()
+            userPreferences.setGitConfig(
+                enabled = pendingToken.isNotBlank() && pendingRepo.isNotBlank(),
+                token = pendingToken,
+                repo = pendingRepo
+            )
+            if (pendingToken.isNotBlank() && pendingRepo.isNotBlank()) {
+                syncNow()
+            }
+            pendingToken = ""
+            pendingRepo = ""
+        }
+    }
+
+    fun confirmMerge() {
+        viewModelScope.launch {
+            _showOverwriteConfirm.value = false
+            userPreferences.setGitConfig(
+                enabled = pendingToken.isNotBlank() && pendingRepo.isNotBlank(),
+                token = pendingToken,
+                repo = pendingRepo
+            )
+            if (pendingToken.isNotBlank() && pendingRepo.isNotBlank()) {
+                _syncResult.value = syncManager.mergeAndAwait()
+            }
+            pendingToken = ""
+            pendingRepo = ""
+        }
+    }
+
+    fun cancelOverwrite() {
+        _showOverwriteConfirm.value = false
+        pendingToken = ""
+        pendingRepo = ""
     }
 
     fun disconnectGitHub() {
