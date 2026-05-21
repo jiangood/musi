@@ -108,6 +108,7 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
 
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.lifecycle.runtime.compose)
 
     implementation(libs.androidx.media3.exoplayer)
