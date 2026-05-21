@@ -158,9 +158,12 @@ class SettingsViewModel @Inject constructor(
     fun saveGitConfig(token: String, repo: String) {
         viewModelScope.launch {
             val current = userPreferences.userPrefs.first()
-            val repoChanged = repo.isNotBlank() && repo != current.gitHubRepo
-            if (repoChanged) {
-                val repoDir = File(context.filesDir, "repo")
+            val repoDir = File(context.filesDir, "repo")
+            val needsCleanup = repo.isNotBlank() && (
+                repo != current.gitHubRepo ||
+                (repoDir.exists() && !File(repoDir, ".git").exists())
+            )
+            if (needsCleanup) {
                 if (repoDir.exists()) {
                     pendingToken = token
                     pendingRepo = repo
