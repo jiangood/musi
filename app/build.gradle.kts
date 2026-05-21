@@ -90,11 +90,6 @@ android {
         }
     }
 
-    applicationVariants.configureEach {
-        outputs.configureEach {
-            outputFileName = "app-release-${this@configureEach.versionName}.apk"
-        }
-    }
 }
 
 dependencies {
