@@ -42,7 +42,6 @@ class MusicPlayer @Inject constructor(
                 .build(),
             /* handleAudioFocus = */ true
         )
-        .setLoudnessEnhancerEnabled(true)
         .setSkipSilenceEnabled(false)
         .build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
