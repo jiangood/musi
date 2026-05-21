@@ -83,6 +83,10 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/LICENSE"
+            excludes += "/META-INF/NOTICE"
+            excludes += "/META-INF/LICENSE.txt"
+            excludes += "/META-INF/NOTICE.txt"
         }
     }
 }
@@ -112,6 +116,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
 
     implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.jgit)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

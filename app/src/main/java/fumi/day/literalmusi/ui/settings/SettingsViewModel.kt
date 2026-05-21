@@ -4,8 +4,8 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import fumi.day.literalmusi.data.github.GitHubSyncManager
-import fumi.day.literalmusi.data.github.SyncResult
+import fumi.day.literalmusi.data.git.GitSyncManager
+import fumi.day.literalmusi.data.git.SyncResult
 import fumi.day.literalmusi.data.prefs.UserPreferences
 import fumi.day.literalmusi.data.prefs.UserPrefs
 import fumi.day.literalmusi.data.repository.MusicRepository
@@ -23,7 +23,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
-    private val syncManager: GitHubSyncManager,
+    private val syncManager: GitSyncManager,
     private val musicRepository: MusicRepository
 ) : ViewModel() {
 
