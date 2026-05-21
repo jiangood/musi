@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -79,44 +80,46 @@ class GitSyncManager @Inject constructor(
     }
 
     private suspend fun syncIfEnabled(): SyncResult? {
-        val prefs = userPreferences.userPrefs.first()
-        if (!prefs.gitHubEnabled || prefs.gitHubToken.isBlank() || prefs.gitHubRepo.isBlank()) {
-            return null
-        }
+        return withContext(Dispatchers.IO) {
+            val prefs = userPreferences.userPrefs.first()
+            if (!prefs.gitHubEnabled || prefs.gitHubToken.isBlank() || prefs.gitHubRepo.isBlank()) {
+                return@withContext null
+            }
 
-        val errors = mutableListOf<String>()
+            val errors = mutableListOf<String>()
 
-        try {
-            gitTransport.ensureInitialized(prefs.gitHubToken, prefs.gitHubRepo)
+            try {
+                gitTransport.ensureInitialized(prefs.gitHubToken, prefs.gitHubRepo)
 
-            val pullResult = gitTransport.pull()
+                val pullResult = gitTransport.pull()
 
-            val uploaded = gitTransport.stageAll()
+                val uploaded = gitTransport.stageAll()
 
-            if (uploaded > 0 || pullResult.filesDownloaded > 0) {
-                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                gitTransport.commit("sync: $timestamp")
+                if (uploaded > 0 || pullResult.filesDownloaded > 0) {
+                    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                    gitTransport.commit("sync: $timestamp")
 
-                val pushOk = gitTransport.push()
-                if (!pushOk) {
-                    errors.add("Push failed")
+                    val pushOk = gitTransport.push()
+                    if (!pushOk) {
+                        errors.add("Push failed")
+                    }
                 }
+
+                if (pullResult.conflicts.isNotEmpty()) {
+                    errors.add("Resolved ${pullResult.conflicts.size} conflict(s): ${pullResult.conflicts.joinToString(", ")}")
+                }
+
+                userPreferences.setLastSyncedAt(System.currentTimeMillis())
+
+                return@withContext SyncResult(
+                    uploaded = uploaded,
+                    downloaded = pullResult.filesDownloaded,
+                    errors = errors
+                )
+            } catch (e: Exception) {
+                errors.add("${e.javaClass.simpleName}: ${e.message ?: "Sync failed"}")
+                return@withContext SyncResult(errors = errors)
             }
-
-            if (pullResult.conflicts.isNotEmpty()) {
-                errors.add("Resolved ${pullResult.conflicts.size} conflict(s): ${pullResult.conflicts.joinToString(", ")}")
-            }
-
-            userPreferences.setLastSyncedAt(System.currentTimeMillis())
-
-            return SyncResult(
-                uploaded = uploaded,
-                downloaded = pullResult.filesDownloaded,
-                errors = errors
-            )
-        } catch (e: Exception) {
-            errors.add("${e.javaClass.simpleName}: ${e.message ?: "Sync failed"}")
-            return SyncResult(errors = errors)
         }
     }
 
