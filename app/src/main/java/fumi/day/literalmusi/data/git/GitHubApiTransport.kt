@@ -44,13 +44,15 @@ class GitHubApiTransport @Inject constructor(
 
     override suspend fun pull(): PullResult {
         pileDir.mkdirs()
-        val preLocal = pileDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
+        val trashNames = trashDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
         val remote = remoteFiles.keys
 
-        val downloaded = (remote - preLocal).count { fileName ->
+        val downloaded = (remote - trashNames).count { fileName ->
+            val localFile = File(pileDir, fileName)
+            if (localFile.exists()) return@count false
             try {
                 val content = downloadFile(fileName)
-                File(pileDir, fileName).writeBytes(content)
+                localFile.writeBytes(content)
                 true
             } catch (_: Exception) {
                 false
@@ -65,16 +67,18 @@ class GitHubApiTransport @Inject constructor(
         return (local - remoteFiles.keys).size
     }
 
-    override suspend fun commit(message: String) {
+    override suspend fun commit(message: String): Int {
         val localFiles = pileDir.listFiles()?.associateBy { it.name } ?: emptyMap()
-        val localNames = localFiles.keys
+        val localPileNames = localFiles.keys
+        val trashNames = trashDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
         val remoteNames = remoteFiles.keys
 
-        val toUpload = localNames - remoteNames
-        val toDelete = remoteNames - localNames
-        val toKeep = localNames.intersect(remoteNames)
+        val toUpload = localPileNames - remoteNames
+        val toDelete = remoteNames.intersect(trashNames)
+        val toKeep = localPileNames.intersect(remoteNames)
 
-        if (toUpload.isEmpty() && toDelete.isEmpty()) return
+        val changed = toUpload.size + toDelete.size
+        if (changed == 0) return 0
 
         val entries = mutableListOf<JSONObject>()
 
@@ -106,70 +110,7 @@ class GitHubApiTransport @Inject constructor(
         updateRef(commitSha)
 
         remoteFiles = listRemoteFiles()
-    }
-
-    override suspend fun batchCommit(ops: List<Operation>): BatchResult {
-        if (ops.isEmpty()) return BatchResult(committed = true)
-        val currentFiles = remoteFiles
-        val entries = mutableListOf<JSONObject>()
-        for ((name, info) in currentFiles) {
-            entries.add(JSONObject().apply {
-                put("path", "pile/$name")
-                put("mode", "100644")
-                put("type", "blob")
-                put("sha", info.sha)
-            })
-        }
-        val errors = mutableListOf<String>()
-        for (op in ops) {
-            when (op.type) {
-                OpType.ADD, OpType.MODIFY -> {
-                    val name = op.path.removePrefix("pile/")
-                    val file = File(pileDir, name)
-                    if (!file.exists()) {
-                        errors.add("${op.type} failed: ${op.path} not found")
-                        continue
-                    }
-                    val sha = createBlob(file.readBytes())
-                    entries.removeAll { it.getString("path") == op.path }
-                    entries.add(JSONObject().apply {
-                        put("path", op.path)
-                        put("mode", "100644")
-                        put("type", "blob")
-                        put("sha", sha)
-                    })
-                }
-                OpType.DELETE -> {
-                    entries.removeAll { it.getString("path") == op.path }
-                }
-                OpType.RENAME -> {
-                    entries.removeAll { it.getString("path") == op.oldPath }
-                    val name = op.path.removePrefix("pile/")
-                    val file = File(pileDir, name)
-                    if (!file.exists()) {
-                        errors.add("RENAME failed: ${op.path} not found")
-                        continue
-                    }
-                    val sha = createBlob(file.readBytes())
-                    entries.add(JSONObject().apply {
-                        put("path", op.path)
-                        put("mode", "100644")
-                        put("type", "blob")
-                        put("sha", sha)
-                    })
-                }
-            }
-        }
-        return try {
-            val treeSha = createTree(entries)
-            val parentSha = getRefSha()
-            val commitSha = createCommit("sync: ${ops.size} ops", treeSha, parentSha)
-            updateRef(commitSha)
-            remoteFiles = listRemoteFiles()
-            BatchResult(committed = true, errors = errors)
-        } catch (e: Exception) {
-            BatchResult(committed = false, errors = listOf("${e.javaClass.simpleName}: ${e.message}"))
-        }
+        return changed
     }
 
     override suspend fun push(): Boolean = true

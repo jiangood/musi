@@ -5,23 +5,16 @@ import javax.inject.Singleton
 
 @Singleton
 class SyncProcessor @Inject constructor(
-    private val gitTransport: GitTransport,
-    private val opLog: OpLog
+    private val gitTransport: GitTransport
 ) {
     suspend fun process(): SyncResult {
-        val ops = opLog.rotate()
         var uploaded = 0
         var errors = emptyList<String>()
 
-        if (ops.isNotEmpty()) {
-            val batchResult = gitTransport.batchCommit(ops)
-            if (batchResult.committed) {
-                uploaded = ops.size
-                opLog.completeSync()
-            } else {
-                opLog.failSync()
-            }
-            errors = batchResult.errors
+        try {
+            uploaded = gitTransport.commit("sync")
+        } catch (e: Exception) {
+            errors = listOf("${e.javaClass.simpleName}: ${e.message}")
         }
 
         val pullResult = try {

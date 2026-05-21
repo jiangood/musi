@@ -25,7 +25,6 @@ class GitSyncManager @Inject constructor(
     private val gitTransport: GitTransport,
     private val syncProcessor: SyncProcessor,
     private val syncScheduler: SyncScheduler,
-    private val opLog: OpLog,
     private val userPreferences: UserPreferences
 ) {
     val isSyncing: StateFlow<Boolean> = syncScheduler.isSyncing
@@ -34,8 +33,6 @@ class GitSyncManager @Inject constructor(
     val syncError: StateFlow<String?> = _syncError.asStateFlow()
 
     init {
-        val repoDir = File(context.filesDir, "repo")
-        opLog.init(repoDir)
         syncScheduler.setSyncCallback {
             syncAndAwait()
         }
@@ -77,6 +74,5 @@ class GitSyncManager @Inject constructor(
         gitTransport.close()
         val repoDir = File(context.filesDir, "repo")
         repoDir.deleteRecursively()
-        opLog.init(repoDir)
     }
 }

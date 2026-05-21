@@ -71,7 +71,6 @@ fun SettingsScreen(
     val syncResult by viewModel.syncResult.collectAsState()
     val importProgress by viewModel.importProgress.collectAsState()
     val lastSyncError by viewModel.lastSyncError.collectAsState()
-    val pendingOpsCount by viewModel.pendingOpsCount.collectAsState()
     val showOverwriteConfirm by viewModel.showOverwriteConfirm.collectAsState()
     val mediaStoreSongs by viewModel.mediaStoreSongs.collectAsState()
 
@@ -124,7 +123,6 @@ fun SettingsScreen(
                 isSyncing = isSyncing,
                 lastSyncedAt = userPrefs.lastSyncedAt,
                 lastSyncError = lastSyncError,
-                pendingOpsCount = pendingOpsCount,
                 onClick = { showSyncStatusDialog = true }
             )
 
@@ -277,7 +275,6 @@ fun SettingsScreen(
             isSyncing = isSyncing,
             lastSyncedAt = userPrefs.lastSyncedAt,
             lastSyncError = lastSyncError,
-            pendingOpsCount = pendingOpsCount,
             syncResult = syncResult,
             onDismiss = { showSyncStatusDialog = false }
         )
@@ -460,13 +457,11 @@ private fun SyncStatusCard(
     isSyncing: Boolean,
     lastSyncedAt: Long?,
     lastSyncError: String?,
-    pendingOpsCount: Int,
     onClick: () -> Unit
 ) {
     val (statusText, statusColor) = when {
         isSyncing -> "Syncing..." to MaterialTheme.colorScheme.tertiary
         lastSyncError != null -> "Error" to MaterialTheme.colorScheme.error
-        pendingOpsCount > 0 -> "Pending" to Color(0xFFFFA000)
         lastSyncedAt != null -> "Synced" to Color(0xFF4CAF50)
         else -> "Not connected" to MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -521,14 +516,6 @@ private fun SyncStatusCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            if (pendingOpsCount > 0 && !isSyncing) {
-                Text(
-                    text = "Pending operations: $pendingOpsCount",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
             Text(
                 text = "Tap for details",
                 style = MaterialTheme.typography.labelSmall,
@@ -544,7 +531,6 @@ private fun SyncStatusDialog(
     isSyncing: Boolean,
     lastSyncedAt: Long?,
     lastSyncError: String?,
-    pendingOpsCount: Int,
     syncResult: SyncResult?,
     onDismiss: () -> Unit
 ) {
@@ -558,7 +544,6 @@ private fun SyncStatusDialog(
                         when {
                             isSyncing -> "Syncing..."
                             lastSyncError != null -> "Error"
-                            pendingOpsCount > 0 -> "Pending"
                             lastSyncedAt != null -> "Synced"
                             else -> "Not connected"
                         }
@@ -595,14 +580,6 @@ private fun SyncStatusDialog(
                             color = MaterialTheme.colorScheme.error
                         )
                     }
-                }
-                if (pendingOpsCount > 0) {
-                    Text(
-                        text = "Pending operations: $pendingOpsCount",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (lastSyncError != null) MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         },

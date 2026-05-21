@@ -7,9 +7,6 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import fumi.day.literalmusi.data.git.GitSyncManager
-import fumi.day.literalmusi.data.git.OpLog
-import fumi.day.literalmusi.data.git.Operation
-import fumi.day.literalmusi.data.git.OpType
 import fumi.day.literalmusi.data.git.SyncResult
 import fumi.day.literalmusi.data.git.SyncScheduler
 import fumi.day.literalmusi.data.prefs.UserPreferences
@@ -25,7 +22,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.UUID
 import javax.inject.Inject
 
 data class ImportProgress(
@@ -58,7 +54,6 @@ class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val syncManager: GitSyncManager,
     private val musicRepository: MusicRepository,
-    private val opLog: OpLog,
     private val syncScheduler: SyncScheduler
 ) : ViewModel() {
 
@@ -73,9 +68,6 @@ class SettingsViewModel @Inject constructor(
 
     val lastSyncError: StateFlow<String?> = syncManager.syncError
 
-    private val _pendingOpsCount = MutableStateFlow(0)
-    val pendingOpsCount: StateFlow<Int> = _pendingOpsCount.asStateFlow()
-
     private val _syncResult = MutableStateFlow<SyncResult?>(null)
     val syncResult: StateFlow<SyncResult?> = _syncResult.asStateFlow()
 
@@ -87,10 +79,6 @@ class SettingsViewModel @Inject constructor(
 
     private var pendingToken: String = ""
     private var pendingRepo: String = ""
-
-    init {
-        _pendingOpsCount.value = opLog.pendingCount()
-    }
 
     val mediaStoreSongs: MutableStateFlow<List<MediaStoreSong>> = MutableStateFlow(emptyList())
 
@@ -155,11 +143,6 @@ class SettingsViewModel @Inject constructor(
 
                     try {
                         srcFile.copyTo(destFile, overwrite = false)
-                        opLog.append(Operation(
-                            id = UUID.randomUUID().toString(),
-                            type = OpType.ADD,
-                            path = "pile/$fileName"
-                        ))
                         syncScheduler.onOperationEnqueued()
                     } catch (e: Exception) {
                         errors.add("Failed to import $fileName: ${e.message}")
@@ -170,7 +153,6 @@ class SettingsViewModel @Inject constructor(
             }
 
             _importProgress.value = ImportProgress(total, completed, errors, false)
-            _pendingOpsCount.value = _pendingOpsCount.value + completed
         }
     }
 
@@ -257,7 +239,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _syncResult.value = null
             _syncResult.value = syncManager.syncAndAwait()
-            _pendingOpsCount.value = 0
         }
     }
 
