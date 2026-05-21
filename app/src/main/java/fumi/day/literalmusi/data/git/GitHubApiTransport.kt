@@ -80,6 +80,8 @@ class GitHubApiTransport @Inject constructor(
         val changed = toUpload.size + toDelete.size
         if (changed == 0) return 0
 
+        ensureRepoInitialized()
+
         val entries = mutableListOf<JSONObject>()
 
         for (name in toKeep) {
@@ -180,6 +182,37 @@ class GitHubApiTransport @Inject constructor(
         return baos.toByteArray()
     }
 
+    private fun ensureRepoInitialized() {
+        if (getRefSha() != null) return
+        val emptyTreeSha = createEmptyTree()
+        val rootCommitSha = createCommit("Initial commit", emptyTreeSha, null)
+        createRef(rootCommitSha)
+    }
+
+    private fun createEmptyTree(): String {
+        val conn = openConnection(repoApi("/git/trees"), "POST")
+        conn.doOutput = true
+        conn.setRequestProperty("Content-Type", "application/json")
+        val body = JSONObject().apply {
+            put("tree", JSONArray())
+        }
+        DataOutputStream(conn.outputStream).use { it.writeBytes(body.toString()) }
+        checkResponse(conn)
+        return JSONObject(readBody(conn)).getString("sha")
+    }
+
+    private fun createRef(commitSha: String) {
+        val conn = openConnection(repoApi("/git/refs"), "POST")
+        conn.doOutput = true
+        conn.setRequestProperty("Content-Type", "application/json")
+        val body = JSONObject().apply {
+            put("ref", "refs/heads/$branch")
+            put("sha", commitSha)
+        }
+        DataOutputStream(conn.outputStream).use { it.writeBytes(body.toString()) }
+        checkResponse(conn)
+    }
+
     private fun createBlob(content: ByteArray): String {
         val conn = openConnection(repoApi("/git/blobs"), "POST")
         conn.doOutput = true
@@ -237,6 +270,10 @@ class GitHubApiTransport @Inject constructor(
             put("force", true)
         }
         DataOutputStream(conn.outputStream).use { it.writeBytes(body.toString()) }
-        val code = conn.responseCode
+        if (conn.responseCode == 409) {
+            createRef(commitSha)
+        } else {
+            checkResponse(conn)
+        }
     }
 }
