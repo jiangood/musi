@@ -80,15 +80,19 @@ class MusicRepositoryImpl @Inject constructor(
                 val data = cursor.getString(dataCol) ?: continue
                 val duration = cursor.getLong(durationCol)
                 val isMusic = cursor.getInt(isMusicCol)
+                val artist = cursor.getString(artistCol) ?: ""
+                val album = cursor.getString(albumCol) ?: ""
+                val title = cursor.getString(titleCol) ?: ""
+                val mimeType = if (mimeCol >= 0) cursor.getString(mimeCol) else null
 
-                if (!isMusicFile(data, duration, isMusic, cursor, mimeCol)) continue
+                if (!isMusicFile(data, duration, isMusic, artist, album, title, mimeType)) continue
 
                 songs.add(
                     Song(
                         id = id,
-                        title = cursor.getString(titleCol) ?: "Unknown",
-                        artist = cursor.getString(artistCol) ?: "Unknown Artist",
-                        album = cursor.getString(albumCol) ?: "Unknown Album",
+                        title = title.ifBlank { "Unknown" },
+                        artist = artist.ifBlank { "Unknown Artist" },
+                        album = album.ifBlank { "Unknown Album" },
                         duration = duration,
                         uri = data,
                         dataModified = cursor.getLong(dateCol) * 1000
@@ -99,32 +103,65 @@ class MusicRepositoryImpl @Inject constructor(
         return songs
     }
 
+    private val nonMusicKeywords = listOf(
+        "recording", "record", "rec_", "rec-", "录音", "通话",
+        "call_", "call-", "voic", "voice", "audio note", "note_",
+        "message", "语音", "unknown", "untitled"
+    )
+
+    private val knownBadArtist = setOf(
+        "", "unknown", "unknown artist", "未知", "未知艺术家",
+        "录音", "voice recorder", "sound recorder", "recording"
+    )
+
     private fun isMusicFile(
         path: String,
         duration: Long,
         isMusic: Int,
-        cursor: android.database.Cursor,
-        mimeCol: Int
+        artist: String,
+        album: String,
+        title: String,
+        mimeType: String?
     ): Boolean {
         if (duration < 30000) return false
 
-        if (isMusic == 1) return true
-
-        val mimeType = if (mimeCol >= 0) cursor.getString(mimeCol) else null
-        if (mimeType != null && musicMimeTypes.any { it.equals(mimeType, ignoreCase = true) }) {
-            return true
+        if (isMusic == 1) {
+            if (hasRealMetadata(artist, album, title)) return true
         }
+
+        if (mimeType != null && musicMimeTypes.none { it.equals(mimeType, ignoreCase = true) }) {
+            return false
+        }
+
+        if (hasRealMetadata(artist, album, title)) return true
 
         val pathLower = path.lowercase()
         val fileName = pathLower.substringAfterLast(File.separatorChar)
         val dirPath = pathLower.substringBeforeLast(File.separatorChar)
 
         if (excludedPaths.any { dirPath.contains(it.lowercase()) }) return false
+        if (nonMusicKeywords.any { fileName.contains(it) }) return false
+        if (nonMusicKeywords.any { title.lowercase().contains(it) }) return false
+
         if (!fileName.endsWith(".mp3") && !fileName.endsWith(".flac") &&
             !fileName.endsWith(".ogg") && !fileName.endsWith(".wav") &&
             !fileName.endsWith(".m4a") && !fileName.endsWith(".aac") &&
             !fileName.endsWith(".opus") && !fileName.endsWith(".wma")
         ) return false
+
+        return true
+    }
+
+    private fun hasRealMetadata(artist: String, album: String, title: String): Boolean {
+        val a = artist.trim().lowercase()
+        val al = album.trim().lowercase()
+        val t = title.trim().lowercase()
+
+        if (a.isBlank() || a in knownBadArtist) return false
+        if (t.isBlank()) return false
+        if (al.isBlank() || al in knownBadArtist) return false
+        if (a == al) return false
+        if (a.length <= 1) return false
 
         return true
     }
