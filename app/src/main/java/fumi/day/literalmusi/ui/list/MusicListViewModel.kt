@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import fumi.day.literalmusi.data.player.MusicPlayer
 import fumi.day.literalmusi.data.repository.MusicRepository
 import fumi.day.literalmusi.domain.model.Song
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -22,5 +23,15 @@ class MusicListViewModel @Inject constructor(
 
     fun playSong(song: Song) {
         musicPlayer.play(song, songs.value)
+    }
+
+    fun deleteSong(song: Song) {
+        viewModelScope.launch {
+            val current = musicPlayer.state.value.currentSong
+            musicRepository.deleteSong(song)
+            if (current?.id == song.id) {
+                musicPlayer.stop()
+            }
+        }
     }
 }

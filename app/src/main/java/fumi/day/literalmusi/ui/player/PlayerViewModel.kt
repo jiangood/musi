@@ -5,8 +5,6 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import fumi.day.literalmusi.data.player.MusicPlayer
 import fumi.day.literalmusi.data.player.PlayerState
-import fumi.day.literalmusi.data.repository.MusicRepository
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -14,8 +12,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
-    private val musicPlayer: MusicPlayer,
-    private val musicRepository: MusicRepository
+    private val musicPlayer: MusicPlayer
 ) : ViewModel() {
 
     val state: StateFlow<PlayerState> = musicPlayer.state
@@ -25,12 +22,4 @@ class PlayerViewModel @Inject constructor(
     fun seekTo(position: Long) = musicPlayer.seekTo(position)
     fun skipToNext() = musicPlayer.skipToNext()
     fun skipToPrevious() = musicPlayer.skipToPrevious()
-
-    fun deleteCurrentSong() {
-        viewModelScope.launch {
-            val song = state.value.currentSong ?: return@launch
-            musicRepository.deleteSong(song)
-            musicPlayer.stop()
-        }
-    }
 }
