@@ -1,7 +1,7 @@
 import com.android.build.gradle.internal.api.ApkVariantOutputImpl
 import java.util.Properties
 
-val appVersionName = "2.4.0"
+val appVersionName = "2.4.2"
 val localProperties = Properties()
 val localPropertiesFile: File = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
@@ -52,7 +52,7 @@ android {
         applicationId = "fumi.day.literalmusi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
+        versionCode = 13
         versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
