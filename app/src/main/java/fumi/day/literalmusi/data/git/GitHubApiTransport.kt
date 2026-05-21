@@ -4,7 +4,6 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.io.InputStreamReader
@@ -52,8 +51,7 @@ class GitHubApiTransport @Inject constructor(
             val localFile = File(pileDir, fileName)
             if (localFile.exists()) return@count false
             try {
-                val content = downloadFile(fileName)
-                localFile.writeBytes(content)
+                downloadFile(fileName, localFile)
                 true
             } catch (_: Exception) {
                 false
@@ -129,7 +127,7 @@ class GitHubApiTransport @Inject constructor(
         for (name in toUpload) {
             val file = localFiles[name] ?: continue
             try {
-                val sha = createBlob(file.readBytes())
+                val sha = createBlob(file)
                 entries.add(JSONObject().apply {
                     put("path", "pile/$name")
                     put("mode", "100644")
@@ -212,13 +210,13 @@ class GitHubApiTransport @Inject constructor(
         }
     }
 
-    private fun downloadFile(fileName: String): ByteArray {
+    private fun downloadFile(fileName: String, target: File) {
         val conn = openConnection(repoApi("/contents/pile/$fileName"))
         conn.setRequestProperty("Accept", "application/vnd.github.v3.raw")
         checkResponse(conn)
-        val baos = ByteArrayOutputStream()
-        conn.inputStream.copyTo(baos)
-        return baos.toByteArray()
+        target.outputStream().use { output ->
+            conn.inputStream.copyTo(output)
+        }
     }
 
     private fun ensureRepoInitialized() {
@@ -250,15 +248,25 @@ class GitHubApiTransport @Inject constructor(
         checkResponse(conn)
     }
 
-    private fun createBlob(content: ByteArray): String {
-        val conn = openConnection(repoApi("/git/blobs"), "POST")
+    private fun createBlob(file: File): String {
+        val conn = openConnection(repoApi("/git/blobs"), "POST").apply {
+            connectTimeout = 30000
+            readTimeout = 120000
+        }
         conn.doOutput = true
         conn.setRequestProperty("Content-Type", "application/json")
-        val body = JSONObject().apply {
-            put("content", Base64.getEncoder().encodeToString(content))
-            put("encoding", "base64")
+        val os = conn.outputStream
+        os.write("{\"content\":\"".toByteArray())
+        val encoder = Base64.getEncoder()
+        val buf = ByteArray(3 * 4096)
+        file.inputStream().use { input ->
+            var bytesRead: Int
+            while (input.read(buf).also { bytesRead = it } != -1) {
+                os.write(if (bytesRead == buf.size) encoder.encode(buf) else encoder.encode(buf, 0, bytesRead))
+            }
         }
-        DataOutputStream(conn.outputStream).use { it.writeBytes(body.toString()) }
+        os.write("\",\"encoding\":\"base64\"}".toByteArray())
+        os.flush()
         checkResponse(conn)
         return JSONObject(readBody(conn)).getString("sha")
     }
