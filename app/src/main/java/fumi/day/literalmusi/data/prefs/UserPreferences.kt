@@ -16,7 +16,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import javax.inject.Inject
@@ -25,12 +24,9 @@ import javax.inject.Singleton
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
 
 data class UserPrefs(
-    val ossEnabled: Boolean = false,
-    val ossAccessKey: String = "",
-    val ossSecretKey: String = "",
-    val ossBucket: String = "",
-    val ossRegion: String = "z0",
-    val ossDomain: String = "",
+    val gitHubEnabled: Boolean = false,
+    val gitHubToken: String = "",
+    val gitHubRepo: String = "",
     val lastSyncedAt: Long? = null,
     val lastSyncedShas: Map<String, String> = emptyMap()
 )
@@ -50,24 +46,21 @@ class UserPreferences @Inject constructor(
         )
     }
 
-    private val _ossSecretKey = MutableStateFlow(
-        encryptedPrefs.getString("oss_secret_key", "") ?: ""
+    private val _gitHubToken = MutableStateFlow(
+        encryptedPrefs.getString("github_token", "") ?: ""
     )
 
     private object Keys {
-        val OSS_ENABLED = booleanPreferencesKey("oss_enabled")
-        val OSS_ACCESS_KEY = stringPreferencesKey("oss_access_key")
-        val OSS_BUCKET = stringPreferencesKey("oss_bucket")
-        val OSS_REGION = stringPreferencesKey("oss_region")
-        val OSS_DOMAIN = stringPreferencesKey("oss_domain")
+        val GITHUB_ENABLED = booleanPreferencesKey("github_enabled")
+        val GITHUB_REPO = stringPreferencesKey("github_repo")
         val LAST_SYNCED_AT = longPreferencesKey("last_synced_at")
         val LAST_SYNCED_SHAS = stringPreferencesKey("last_synced_shas")
     }
 
     val userPrefs: Flow<UserPrefs> = combine(
         context.dataStore.data,
-        _ossSecretKey
-    ) { prefs, secretKey ->
+        _gitHubToken
+    ) { prefs, token ->
         val shasJson = prefs[Keys.LAST_SYNCED_SHAS]
         val shas = if (shasJson != null) {
             val obj = JSONObject(shasJson)
@@ -76,36 +69,23 @@ class UserPreferences @Inject constructor(
             emptyMap()
         }
         UserPrefs(
-            ossEnabled = prefs[Keys.OSS_ENABLED] ?: false,
-            ossAccessKey = prefs[Keys.OSS_ACCESS_KEY] ?: "",
-            ossSecretKey = secretKey,
-            ossBucket = prefs[Keys.OSS_BUCKET] ?: "",
-            ossRegion = prefs[Keys.OSS_REGION] ?: "z0",
-            ossDomain = prefs[Keys.OSS_DOMAIN] ?: "",
+            gitHubEnabled = prefs[Keys.GITHUB_ENABLED] ?: false,
+            gitHubToken = token,
+            gitHubRepo = prefs[Keys.GITHUB_REPO] ?: "",
             lastSyncedAt = prefs[Keys.LAST_SYNCED_AT],
             lastSyncedShas = shas
         )
     }
 
-    suspend fun setOssConfig(
-        enabled: Boolean,
-        accessKey: String,
-        secretKey: String,
-        bucket: String,
-        region: String,
-        domain: String
-    ) {
+    suspend fun setGitConfig(enabled: Boolean, token: String, repo: String) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.OSS_ENABLED] = enabled
-            prefs[Keys.OSS_ACCESS_KEY] = accessKey
-            prefs[Keys.OSS_BUCKET] = bucket
-            prefs[Keys.OSS_REGION] = region
-            prefs[Keys.OSS_DOMAIN] = domain
+            prefs[Keys.GITHUB_ENABLED] = enabled
+            prefs[Keys.GITHUB_REPO] = repo
         }
         withContext(Dispatchers.IO) {
-            encryptedPrefs.edit().putString("oss_secret_key", secretKey).apply()
+            encryptedPrefs.edit().putString("github_token", token).apply()
         }
-        _ossSecretKey.value = secretKey
+        _gitHubToken.value = token
     }
 
     suspend fun resetSyncState() {
@@ -127,19 +107,17 @@ class UserPreferences @Inject constructor(
         }
     }
 
-    suspend fun clearOssConfig() {
+    suspend fun clearGitHubConfig() {
         context.dataStore.edit { prefs ->
-            prefs[Keys.OSS_ENABLED] = false
-            prefs[Keys.OSS_ACCESS_KEY] = ""
-            prefs[Keys.OSS_BUCKET] = ""
-            prefs[Keys.OSS_REGION] = "z0"
-            prefs[Keys.OSS_DOMAIN] = ""
+            prefs[Keys.GITHUB_ENABLED] = false
+            prefs[Keys.GITHUB_REPO] = ""
             prefs.remove(Keys.LAST_SYNCED_AT)
             prefs.remove(Keys.LAST_SYNCED_SHAS)
         }
         withContext(Dispatchers.IO) {
-            encryptedPrefs.edit().remove("oss_secret_key").apply()
+            encryptedPrefs.edit().remove("github_token").apply()
         }
-        _ossSecretKey.value = ""
+        _gitHubToken.value = ""
     }
+
 }

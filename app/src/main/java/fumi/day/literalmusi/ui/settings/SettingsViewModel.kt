@@ -77,11 +77,8 @@ class SettingsViewModel @Inject constructor(
     private val _showOverwriteConfirm = MutableStateFlow(false)
     val showOverwriteConfirm: StateFlow<Boolean> = _showOverwriteConfirm.asStateFlow()
 
-    private var pendingAccessKey: String = ""
-    private var pendingSecretKey: String = ""
-    private var pendingBucket: String = ""
-    private var pendingRegion: String = ""
-    private var pendingDomain: String = ""
+    private var pendingToken: String = ""
+    private var pendingRepo: String = ""
 
     val mediaStoreSongs: MutableStateFlow<List<MediaStoreSong>> = MutableStateFlow(emptyList())
 
@@ -163,49 +160,30 @@ class SettingsViewModel @Inject constructor(
         return File(context.filesDir, "repo/pile").also { it.mkdirs() }
     }
 
-    private fun autoDomain(bucket: String, region: String): String {
-        val r = region.ifEmpty { "z0" }
-        return "https://$bucket.s3-$r.qiniucs.com"
-    }
-
-    fun saveOssConfig(
-        accessKey: String,
-        secretKey: String,
-        bucket: String,
-        region: String,
-        domain: String
-    ) {
-        val resolvedDomain = domain.ifBlank { autoDomain(bucket, region) }
-        val resolvedRegion = region.ifEmpty { "z0" }
+    fun saveGitConfig(token: String, repo: String) {
         viewModelScope.launch {
             val current = userPreferences.userPrefs.first()
             val repoDir = File(context.filesDir, "repo")
-            val needsCleanup = bucket.isNotBlank() && (
-                bucket != current.ossBucket ||
-                (repoDir.exists() && repoDir.listFiles()?.isNotEmpty() == true)
+            val needsCleanup = repo.isNotBlank() && (
+                repo != current.gitHubRepo ||
+                (repoDir.exists() && !File(repoDir, ".git").exists())
             )
             if (needsCleanup) {
                 if (repoDir.exists()) {
-                    pendingAccessKey = accessKey
-                    pendingSecretKey = secretKey
-                    pendingBucket = bucket
-                    pendingRegion = resolvedRegion
-                    pendingDomain = resolvedDomain
+                    pendingToken = token
+                    pendingRepo = repo
                     _showOverwriteConfirm.value = true
                     return@launch
                 }
                 syncManager.clearLocalData()
                 userPreferences.resetSyncState()
             }
-            userPreferences.setOssConfig(
-                enabled = accessKey.isNotBlank() && secretKey.isNotBlank() && bucket.isNotBlank(),
-                accessKey = accessKey,
-                secretKey = secretKey,
-                bucket = bucket,
-                region = resolvedRegion,
-                domain = resolvedDomain
+            userPreferences.setGitConfig(
+                enabled = token.isNotBlank() && repo.isNotBlank(),
+                token = token,
+                repo = repo
             )
-            if (accessKey.isNotBlank() && secretKey.isNotBlank() && bucket.isNotBlank()) {
+            if (token.isNotBlank() && repo.isNotBlank()) {
                 syncNow()
             }
         }
@@ -216,59 +194,44 @@ class SettingsViewModel @Inject constructor(
             _showOverwriteConfirm.value = false
             syncManager.clearLocalData()
             userPreferences.resetSyncState()
-            userPreferences.setOssConfig(
-                enabled = pendingAccessKey.isNotBlank() && pendingSecretKey.isNotBlank() && pendingBucket.isNotBlank(),
-                accessKey = pendingAccessKey,
-                secretKey = pendingSecretKey,
-                bucket = pendingBucket,
-                region = pendingRegion,
-                domain = pendingDomain
+            userPreferences.setGitConfig(
+                enabled = pendingToken.isNotBlank() && pendingRepo.isNotBlank(),
+                token = pendingToken,
+                repo = pendingRepo
             )
-            if (pendingAccessKey.isNotBlank() && pendingSecretKey.isNotBlank() && pendingBucket.isNotBlank()) {
+            if (pendingToken.isNotBlank() && pendingRepo.isNotBlank()) {
                 syncNow()
             }
-            pendingAccessKey = ""
-            pendingSecretKey = ""
-            pendingBucket = ""
-            pendingRegion = ""
-            pendingDomain = ""
+            pendingToken = ""
+            pendingRepo = ""
         }
     }
 
     fun confirmMerge() {
         viewModelScope.launch {
             _showOverwriteConfirm.value = false
-            userPreferences.setOssConfig(
-                enabled = pendingAccessKey.isNotBlank() && pendingSecretKey.isNotBlank() && pendingBucket.isNotBlank(),
-                accessKey = pendingAccessKey,
-                secretKey = pendingSecretKey,
-                bucket = pendingBucket,
-                region = pendingRegion,
-                domain = pendingDomain
+            userPreferences.setGitConfig(
+                enabled = pendingToken.isNotBlank() && pendingRepo.isNotBlank(),
+                token = pendingToken,
+                repo = pendingRepo
             )
-            if (pendingAccessKey.isNotBlank() && pendingSecretKey.isNotBlank() && pendingBucket.isNotBlank()) {
+            if (pendingToken.isNotBlank() && pendingRepo.isNotBlank()) {
                 _syncResult.value = syncManager.mergeAndAwait()
             }
-            pendingAccessKey = ""
-            pendingSecretKey = ""
-            pendingBucket = ""
-            pendingRegion = ""
-            pendingDomain = ""
+            pendingToken = ""
+            pendingRepo = ""
         }
     }
 
     fun cancelOverwrite() {
         _showOverwriteConfirm.value = false
-        pendingAccessKey = ""
-        pendingSecretKey = ""
-        pendingBucket = ""
-        pendingRegion = ""
-        pendingDomain = ""
+        pendingToken = ""
+        pendingRepo = ""
     }
 
-    fun disconnectCloudSync() {
+    fun disconnectGitHub() {
         viewModelScope.launch {
-            userPreferences.clearOssConfig()
+            userPreferences.clearGitHubConfig()
         }
     }
 

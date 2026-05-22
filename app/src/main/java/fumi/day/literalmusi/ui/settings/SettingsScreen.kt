@@ -74,7 +74,7 @@ fun SettingsScreen(
     val showOverwriteConfirm by viewModel.showOverwriteConfirm.collectAsState()
     val mediaStoreSongs by viewModel.mediaStoreSongs.collectAsState()
 
-    var showOssDialog by remember { mutableStateOf(false) }
+    var showGitDialog by remember { mutableStateOf(false) }
     var showMediaStorePicker by remember { mutableStateOf(false) }
     var showSyncStatusDialog by remember { mutableStateOf(false) }
 
@@ -107,14 +107,14 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
-            CloudSyncCard(
+            GitSyncCard(
                 userPrefs = userPrefs,
                 isSyncing = isSyncing,
                 accentColor = MaterialTheme.colorScheme.primary,
-                onConnectClick = { showOssDialog = true },
+                onConnectClick = { showGitDialog = true },
                 onSyncNowClick = viewModel::syncNow,
-                onEditClick = { showOssDialog = true },
-                onDisconnectClick = viewModel::disconnectCloudSync
+                onEditClick = { showGitDialog = true },
+                onDisconnectClick = viewModel::disconnectGitHub
             )
 
             HorizontalDivider()
@@ -148,18 +148,15 @@ fun SettingsScreen(
         }
     }
 
-    if (showOssDialog) {
-        CloudSettingsDialog(
-            initialAccessKey = userPrefs.ossAccessKey,
-            initialSecretKey = userPrefs.ossSecretKey,
-            initialBucket = userPrefs.ossBucket,
-            initialRegion = userPrefs.ossRegion,
-            initialDomain = userPrefs.ossDomain,
-            onSave = { accessKey, secretKey, bucket, region, domain ->
-                viewModel.saveOssConfig(accessKey, secretKey, bucket, region, domain)
-                showOssDialog = false
+    if (showGitDialog) {
+        GitSettingsDialog(
+            initialToken = userPrefs.gitHubToken,
+            initialRepo = userPrefs.gitHubRepo,
+            onSave = { token, repo ->
+                viewModel.saveGitConfig(token, repo)
+                showGitDialog = false
             },
-            onDismiss = { showOssDialog = false }
+            onDismiss = { showGitDialog = false }
         )
     }
 
@@ -615,7 +612,7 @@ private fun formatRelativeTime(timestamp: Long?): String {
 }
 
 @Composable
-private fun CloudSyncCard(
+private fun GitSyncCard(
     userPrefs: fumi.day.literalmusi.data.prefs.UserPrefs,
     isSyncing: Boolean,
     accentColor: Color,
@@ -630,14 +627,14 @@ private fun CloudSyncCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = "Cloud Sync",
+                text = "Git Sync",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (!userPrefs.ossEnabled) {
+            if (!userPrefs.gitHubEnabled) {
                 Button(
                     onClick = onConnectClick,
                     modifier = Modifier.fillMaxWidth(),
@@ -647,20 +644,20 @@ private fun CloudSyncCard(
                 }
             } else {
                 Text(
-                    text = "Qiniu Cloud",
+                    text = "GitHub",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = userPrefs.ossBucket,
+                    text = userPrefs.gitHubRepo,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                if (userPrefs.ossAccessKey.isBlank() || userPrefs.ossSecretKey.isBlank()) {
+                if (userPrefs.gitHubToken.isBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Credentials missing. Please re-enter your Access Key and Secret Key.",
+                        text = "Token missing. Please re-enter your Personal Access Token.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -695,83 +692,41 @@ private fun CloudSyncCard(
 }
 
 @Composable
-private fun CloudSettingsDialog(
-    initialAccessKey: String,
-    initialSecretKey: String,
-    initialBucket: String,
-    initialRegion: String,
-    initialDomain: String,
-    onSave: (String, String, String, String, String) -> Unit,
+private fun GitSettingsDialog(
+    initialToken: String,
+    initialRepo: String,
+    onSave: (String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var accessKey by remember { mutableStateOf(initialAccessKey) }
-    var secretKey by remember { mutableStateOf(initialSecretKey) }
-    var bucket by remember { mutableStateOf(initialBucket) }
-    var region by remember { mutableStateOf(initialRegion.ifEmpty { "z0" }) }
-    var domain by remember { mutableStateOf(initialDomain) }
-    var showAdvanced by remember { mutableStateOf(false) }
+    var token by remember { mutableStateOf(initialToken) }
+    var repo by remember { mutableStateOf(initialRepo) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Cloud Sync") },
+        title = { Text("GitHub Sync") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    value = accessKey,
-                    onValueChange = { accessKey = it },
-                    label = { Text("Access Key") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = secretKey,
-                    onValueChange = { secretKey = it },
-                    label = { Text("Secret Key") },
+                    value = token,
+                    onValueChange = { token = it },
+                    label = { Text("Personal Access Token") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
-                    value = bucket,
-                    onValueChange = { bucket = it },
-                    label = { Text("Bucket") },
+                    value = repo,
+                    onValueChange = { repo = it },
+                    label = { Text("Repository (owner/repo)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-
-                TextButton(
-                    onClick = { showAdvanced = !showAdvanced },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        if (showAdvanced) "Hide Advanced Settings" else "Show Advanced Settings",
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-
-                if (showAdvanced) {
-                    OutlinedTextField(
-                        value = region,
-                        onValueChange = { region = it },
-                        label = { Text("Region") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = domain,
-                        onValueChange = { domain = it },
-                        label = { Text("Domain") },
-                        singleLine = true,
-                        placeholder = { Text("Auto-generated from bucket") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(accessKey, secretKey, bucket, region, domain) },
-                enabled = accessKey.isNotBlank() && secretKey.isNotBlank() && bucket.isNotBlank()
+                onClick = { onSave(token, repo) },
+                enabled = token.isNotBlank() && repo.contains("/")
             ) {
                 Text("Save")
             }

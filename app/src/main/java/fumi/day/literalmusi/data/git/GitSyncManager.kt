@@ -47,18 +47,12 @@ class GitSyncManager @Inject constructor(
         if (isSyncing.value) return null
         return withContext(Dispatchers.IO) {
             val prefs = userPreferences.userPrefs.first()
-            if (!prefs.ossEnabled || prefs.ossAccessKey.isBlank() || prefs.ossSecretKey.isBlank() || prefs.ossBucket.isBlank()) {
+            if (!prefs.gitHubEnabled || prefs.gitHubToken.isBlank() || prefs.gitHubRepo.isBlank()) {
                 return@withContext null
             }
             _syncError.value = null
             try {
-                gitTransport.ensureInitialized(
-                    prefs.ossAccessKey,
-                    prefs.ossSecretKey,
-                    prefs.ossBucket,
-                    prefs.ossRegion,
-                    prefs.ossDomain
-                )
+                gitTransport.ensureInitialized(prefs.gitHubToken, prefs.gitHubRepo)
                 val result = syncProcessor.process(prefs.lastSyncedShas, prefs.lastSyncedAt)
                 if (result.errors.isNotEmpty()) {
                     _syncError.value = result.errors.first()
