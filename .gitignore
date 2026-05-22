@@ -20,3 +20,4 @@ docs/play_store_assets/
 CLAUDE.md
 *.jks
 secrets.txt
+.superpowers/
