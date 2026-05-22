@@ -34,6 +34,15 @@ class MusicRepositoryImpl @Inject constructor(
     private val pileDir: File get() = gitTransport.pileDir
     private val audioExtensions = setOf("mp3", "flac", "wav", "ogg", "m4a", "aac", "opus", "wma")
     private val _refresh = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val cacheFile: File get() = File(context.filesDir, "cache/music_cache.json")
+
+    private data class CacheEntry(
+        val title: String,
+        val artist: String,
+        val album: String,
+        val duration: Long,
+        val dataModified: Long
+    )
 
     override fun observeAll(): Flow<List<Song>> = callbackFlow {
         trySend(scanPile())
@@ -59,11 +68,56 @@ class MusicRepositoryImpl @Inject constructor(
 
     private fun scanPile(): List<Song> {
         if (!pileDir.exists()) return emptyList()
-        return pileDir.listFiles()
+        val files = pileDir.listFiles()
             ?.filter { it.isFile && isAudioFileName(it.name) }
             ?.sortedBy { it.name }
-            ?.mapNotNull { file -> extractSong(file) }
-            ?: emptyList()
+            .orEmpty()
+
+        val cache = readCache()
+        val updatedEntries = mutableMapOf<String, CacheEntry>()
+        val result = mutableListOf<Song>()
+
+        for (file in files) {
+            val relPath = "pile/${file.name}"
+            val cached = cache[relPath]
+            val song: Song?
+
+            if (cached != null && cached.dataModified == file.lastModified()) {
+                song = Song(
+                    id = file.absolutePath.hashCode().toLong() and 0xFFFFFFFFL,
+                    title = cached.title,
+                    artist = cached.artist,
+                    album = cached.album,
+                    duration = cached.duration,
+                    uri = file.absolutePath,
+                    dataModified = cached.dataModified
+                )
+            } else {
+                song = extractSong(file)
+                if (song != null) {
+                    updatedEntries[relPath] = CacheEntry(
+                        title = song.title,
+                        artist = song.artist,
+                        album = song.album,
+                        duration = song.duration,
+                        dataModified = song.dataModified
+                    )
+                }
+            }
+
+            if (song != null) {
+                result.add(song)
+                if (relPath !in updatedEntries) {
+                    updatedEntries[relPath] = cache[relPath]!!
+                }
+            }
+        }
+
+        if (updatedEntries.isNotEmpty()) {
+            writeCache(updatedEntries)
+        }
+
+        return result
     }
 
     private fun extractSong(file: File): Song? {
@@ -96,6 +150,52 @@ class MusicRepositoryImpl @Inject constructor(
 
     private fun isAudioFileName(name: String): Boolean {
         return name.substringAfterLast('.', "").lowercase() in audioExtensions
+    }
+
+    private fun readCache(): Map<String, CacheEntry> {
+        if (!cacheFile.exists()) return emptyMap()
+        return try {
+            val json = cacheFile.readText()
+            val obj = org.json.JSONObject(json)
+            val entries = obj.getJSONObject("entries")
+            val map = mutableMapOf<String, CacheEntry>()
+            for (key in entries.keys()) {
+                val e = entries.getJSONObject(key)
+                map[key] = CacheEntry(
+                    title = e.getString("title"),
+                    artist = e.getString("artist"),
+                    album = e.getString("album"),
+                    duration = e.getLong("duration"),
+                    dataModified = e.getLong("dataModified")
+                )
+            }
+            map
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    private fun writeCache(entries: Map<String, CacheEntry>) {
+        try {
+            cacheFile.parentFile?.mkdirs()
+            val tmp = File(cacheFile.parentFile, "music_cache.json.tmp")
+            val obj = org.json.JSONObject()
+            val entriesObj = org.json.JSONObject()
+            for ((path, entry) in entries) {
+                val e = org.json.JSONObject()
+                e.put("title", entry.title)
+                e.put("artist", entry.artist)
+                e.put("album", entry.album)
+                e.put("duration", entry.duration)
+                e.put("dataModified", entry.dataModified)
+                entriesObj.put(path, e)
+            }
+            obj.put("version", 1)
+            obj.put("entries", entriesObj)
+            tmp.writeText(obj.toString(2))
+            tmp.renameTo(cacheFile)
+        } catch (_: Exception) {
+        }
     }
 
     suspend fun addFilesToPile(uris: List<Uri>, deleteSource: Boolean = false): List<String> {
