@@ -111,9 +111,9 @@ fun SettingsScreen(
                 userPrefs = userPrefs,
                 isSyncing = isSyncing,
                 accentColor = MaterialTheme.colorScheme.primary,
-                onConnectClick = { showGitDialog = true },
+                onConnectClick = { showOssDialog = true },
                 onSyncNowClick = viewModel::syncNow,
-                onEditClick = { showGitDialog = true },
+                onEditClick = { showOssDialog = true },
                 onDisconnectClick = viewModel::disconnectCloudSync
             )
 
