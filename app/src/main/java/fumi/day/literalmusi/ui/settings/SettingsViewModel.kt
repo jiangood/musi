@@ -7,6 +7,9 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import fumi.day.literalmusi.data.git.GitSyncManager
+import fumi.day.literalmusi.data.git.OpLog
+import fumi.day.literalmusi.data.git.OpType
+import fumi.day.literalmusi.data.git.Operation
 import fumi.day.literalmusi.data.git.SyncResult
 import fumi.day.literalmusi.data.git.SyncScheduler
 import fumi.day.literalmusi.data.prefs.UserPreferences
@@ -54,7 +57,8 @@ class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val syncManager: GitSyncManager,
     private val musicRepository: MusicRepository,
-    private val syncScheduler: SyncScheduler
+    private val syncScheduler: SyncScheduler,
+    private val opLog: OpLog
 ) : ViewModel() {
 
     val userPrefs: StateFlow<UserPrefs> = userPreferences.userPrefs
@@ -143,6 +147,10 @@ class SettingsViewModel @Inject constructor(
 
                     try {
                         srcFile.copyTo(destFile, overwrite = false)
+                        opLog.append(Operation(
+                            type = OpType.ADD,
+                            path = "pile/$fileName"
+                        ))
                         syncScheduler.onOperationEnqueued()
                     } catch (e: Exception) {
                         errors.add("Failed to import $fileName: ${e.message}")
