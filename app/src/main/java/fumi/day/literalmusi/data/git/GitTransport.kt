@@ -9,7 +9,13 @@ data class CommitResult(
 )
 
 interface GitTransport {
-    suspend fun ensureInitialized(token: String, repo: String)
+    suspend fun ensureInitialized(
+        accessKey: String,
+        secretKey: String,
+        bucket: String,
+        region: String,
+        domain: String
+    )
     suspend fun pull(): PullResult
     suspend fun stageAll(): Int
     suspend fun commit(message: String, knownShas: Map<String, String> = emptyMap(), lastSyncedAt: Long? = null): CommitResult

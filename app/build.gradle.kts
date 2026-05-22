@@ -1,7 +1,7 @@
 import com.android.build.gradle.internal.api.ApkVariantOutputImpl
 import java.util.Properties
 
-val appVersionName = "2.5.1"
+val appVersionName = "3.0.0"
 val localProperties = Properties()
 val localPropertiesFile: File = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
@@ -52,7 +52,7 @@ android {
         applicationId = "fumi.day.literalmusi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
+        versionCode = 18
         versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -126,6 +126,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
 
     implementation(libs.androidx.media3.exoplayer)
+
+    implementation(libs.qiniu.java.sdk)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

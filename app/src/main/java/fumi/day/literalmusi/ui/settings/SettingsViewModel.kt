@@ -77,8 +77,11 @@ class SettingsViewModel @Inject constructor(
     private val _showOverwriteConfirm = MutableStateFlow(false)
     val showOverwriteConfirm: StateFlow<Boolean> = _showOverwriteConfirm.asStateFlow()
 
-    private var pendingToken: String = ""
-    private var pendingRepo: String = ""
+    private var pendingAccessKey: String = ""
+    private var pendingSecretKey: String = ""
+    private var pendingBucket: String = ""
+    private var pendingRegion: String = ""
+    private var pendingDomain: String = ""
 
     val mediaStoreSongs: MutableStateFlow<List<MediaStoreSong>> = MutableStateFlow(emptyList())
 
@@ -160,30 +163,42 @@ class SettingsViewModel @Inject constructor(
         return File(context.filesDir, "repo/pile").also { it.mkdirs() }
     }
 
-    fun saveGitConfig(token: String, repo: String) {
+    fun saveOssConfig(
+        accessKey: String,
+        secretKey: String,
+        bucket: String,
+        region: String,
+        domain: String
+    ) {
         viewModelScope.launch {
             val current = userPreferences.userPrefs.first()
             val repoDir = File(context.filesDir, "repo")
-            val needsCleanup = repo.isNotBlank() && (
-                repo != current.gitHubRepo ||
-                (repoDir.exists() && !File(repoDir, ".git").exists())
+            val needsCleanup = bucket.isNotBlank() && (
+                bucket != current.ossBucket ||
+                (repoDir.exists() && repoDir.listFiles()?.isNotEmpty() == true)
             )
             if (needsCleanup) {
                 if (repoDir.exists()) {
-                    pendingToken = token
-                    pendingRepo = repo
+                    pendingAccessKey = accessKey
+                    pendingSecretKey = secretKey
+                    pendingBucket = bucket
+                    pendingRegion = region
+                    pendingDomain = domain
                     _showOverwriteConfirm.value = true
                     return@launch
                 }
                 syncManager.clearLocalData()
                 userPreferences.resetSyncState()
             }
-            userPreferences.setGitConfig(
-                enabled = token.isNotBlank() && repo.isNotBlank(),
-                token = token,
-                repo = repo
+            userPreferences.setOssConfig(
+                enabled = accessKey.isNotBlank() && secretKey.isNotBlank() && bucket.isNotBlank(),
+                accessKey = accessKey,
+                secretKey = secretKey,
+                bucket = bucket,
+                region = region,
+                domain = domain
             )
-            if (token.isNotBlank() && repo.isNotBlank()) {
+            if (accessKey.isNotBlank() && secretKey.isNotBlank() && bucket.isNotBlank()) {
                 syncNow()
             }
         }
@@ -194,44 +209,59 @@ class SettingsViewModel @Inject constructor(
             _showOverwriteConfirm.value = false
             syncManager.clearLocalData()
             userPreferences.resetSyncState()
-            userPreferences.setGitConfig(
-                enabled = pendingToken.isNotBlank() && pendingRepo.isNotBlank(),
-                token = pendingToken,
-                repo = pendingRepo
+            userPreferences.setOssConfig(
+                enabled = pendingAccessKey.isNotBlank() && pendingSecretKey.isNotBlank() && pendingBucket.isNotBlank(),
+                accessKey = pendingAccessKey,
+                secretKey = pendingSecretKey,
+                bucket = pendingBucket,
+                region = pendingRegion,
+                domain = pendingDomain
             )
-            if (pendingToken.isNotBlank() && pendingRepo.isNotBlank()) {
+            if (pendingAccessKey.isNotBlank() && pendingSecretKey.isNotBlank() && pendingBucket.isNotBlank()) {
                 syncNow()
             }
-            pendingToken = ""
-            pendingRepo = ""
+            pendingAccessKey = ""
+            pendingSecretKey = ""
+            pendingBucket = ""
+            pendingRegion = ""
+            pendingDomain = ""
         }
     }
 
     fun confirmMerge() {
         viewModelScope.launch {
             _showOverwriteConfirm.value = false
-            userPreferences.setGitConfig(
-                enabled = pendingToken.isNotBlank() && pendingRepo.isNotBlank(),
-                token = pendingToken,
-                repo = pendingRepo
+            userPreferences.setOssConfig(
+                enabled = pendingAccessKey.isNotBlank() && pendingSecretKey.isNotBlank() && pendingBucket.isNotBlank(),
+                accessKey = pendingAccessKey,
+                secretKey = pendingSecretKey,
+                bucket = pendingBucket,
+                region = pendingRegion,
+                domain = pendingDomain
             )
-            if (pendingToken.isNotBlank() && pendingRepo.isNotBlank()) {
+            if (pendingAccessKey.isNotBlank() && pendingSecretKey.isNotBlank() && pendingBucket.isNotBlank()) {
                 _syncResult.value = syncManager.mergeAndAwait()
             }
-            pendingToken = ""
-            pendingRepo = ""
+            pendingAccessKey = ""
+            pendingSecretKey = ""
+            pendingBucket = ""
+            pendingRegion = ""
+            pendingDomain = ""
         }
     }
 
     fun cancelOverwrite() {
         _showOverwriteConfirm.value = false
-        pendingToken = ""
-        pendingRepo = ""
+        pendingAccessKey = ""
+        pendingSecretKey = ""
+        pendingBucket = ""
+        pendingRegion = ""
+        pendingDomain = ""
     }
 
-    fun disconnectGitHub() {
+    fun disconnectCloudSync() {
         viewModelScope.launch {
-            userPreferences.clearGitHubConfig()
+            userPreferences.clearOssConfig()
         }
     }
 

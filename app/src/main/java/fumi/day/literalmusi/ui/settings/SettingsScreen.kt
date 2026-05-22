@@ -74,7 +74,7 @@ fun SettingsScreen(
     val showOverwriteConfirm by viewModel.showOverwriteConfirm.collectAsState()
     val mediaStoreSongs by viewModel.mediaStoreSongs.collectAsState()
 
-    var showGitDialog by remember { mutableStateOf(false) }
+    var showOssDialog by remember { mutableStateOf(false) }
     var showMediaStorePicker by remember { mutableStateOf(false) }
     var showSyncStatusDialog by remember { mutableStateOf(false) }
 
@@ -107,14 +107,14 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
-            GitSyncCard(
+            CloudSyncCard(
                 userPrefs = userPrefs,
                 isSyncing = isSyncing,
                 accentColor = MaterialTheme.colorScheme.primary,
                 onConnectClick = { showGitDialog = true },
                 onSyncNowClick = viewModel::syncNow,
                 onEditClick = { showGitDialog = true },
-                onDisconnectClick = viewModel::disconnectGitHub
+                onDisconnectClick = viewModel::disconnectCloudSync
             )
 
             HorizontalDivider()
@@ -148,15 +148,18 @@ fun SettingsScreen(
         }
     }
 
-    if (showGitDialog) {
-        GitSettingsDialog(
-            initialToken = userPrefs.gitHubToken,
-            initialRepo = userPrefs.gitHubRepo,
-            onSave = { token, repo ->
-                viewModel.saveGitConfig(token, repo)
-                showGitDialog = false
+    if (showOssDialog) {
+        CloudSettingsDialog(
+            initialAccessKey = userPrefs.ossAccessKey,
+            initialSecretKey = userPrefs.ossSecretKey,
+            initialBucket = userPrefs.ossBucket,
+            initialRegion = userPrefs.ossRegion,
+            initialDomain = userPrefs.ossDomain,
+            onSave = { accessKey, secretKey, bucket, region, domain ->
+                viewModel.saveOssConfig(accessKey, secretKey, bucket, region, domain)
+                showOssDialog = false
             },
-            onDismiss = { showGitDialog = false }
+            onDismiss = { showOssDialog = false }
         )
     }
 
@@ -612,7 +615,7 @@ private fun formatRelativeTime(timestamp: Long?): String {
 }
 
 @Composable
-private fun GitSyncCard(
+private fun CloudSyncCard(
     userPrefs: fumi.day.literalmusi.data.prefs.UserPrefs,
     isSyncing: Boolean,
     accentColor: Color,
@@ -627,14 +630,14 @@ private fun GitSyncCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = "Git Sync",
+                text = "Cloud Sync",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (!userPrefs.gitHubEnabled) {
+            if (!userPrefs.ossEnabled) {
                 Button(
                     onClick = onConnectClick,
                     modifier = Modifier.fillMaxWidth(),
@@ -644,20 +647,20 @@ private fun GitSyncCard(
                 }
             } else {
                 Text(
-                    text = "GitHub",
+                    text = "Qiniu Cloud",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = userPrefs.gitHubRepo,
+                    text = userPrefs.ossBucket,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                if (userPrefs.gitHubToken.isBlank()) {
+                if (userPrefs.ossAccessKey.isBlank() || userPrefs.ossSecretKey.isBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Token missing. Please re-enter your Personal Access Token.",
+                        text = "Credentials missing. Please re-enter your Access Key and Secret Key.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -692,41 +695,69 @@ private fun GitSyncCard(
 }
 
 @Composable
-private fun GitSettingsDialog(
-    initialToken: String,
-    initialRepo: String,
-    onSave: (String, String) -> Unit,
+private fun CloudSettingsDialog(
+    initialAccessKey: String,
+    initialSecretKey: String,
+    initialBucket: String,
+    initialRegion: String,
+    initialDomain: String,
+    onSave: (String, String, String, String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var token by remember { mutableStateOf(initialToken) }
-    var repo by remember { mutableStateOf(initialRepo) }
+    var accessKey by remember { mutableStateOf(initialAccessKey) }
+    var secretKey by remember { mutableStateOf(initialSecretKey) }
+    var bucket by remember { mutableStateOf(initialBucket) }
+    var region by remember { mutableStateOf(initialRegion) }
+    var domain by remember { mutableStateOf(initialDomain) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("GitHub Sync") },
+        title = { Text("Cloud Sync") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    value = token,
-                    onValueChange = { token = it },
-                    label = { Text("Personal Access Token") },
+                    value = accessKey,
+                    onValueChange = { accessKey = it },
+                    label = { Text("Access Key") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = secretKey,
+                    onValueChange = { secretKey = it },
+                    label = { Text("Secret Key") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
-                    value = repo,
-                    onValueChange = { repo = it },
-                    label = { Text("Repository (owner/repo)") },
+                    value = bucket,
+                    onValueChange = { bucket = it },
+                    label = { Text("Bucket") },
                     singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = region,
+                    onValueChange = { region = it },
+                    label = { Text("Region (e.g. z0)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = domain,
+                    onValueChange = { domain = it },
+                    label = { Text("Domain") },
+                    singleLine = true,
+                    placeholder = { Text("https://your-domain.com") },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(token, repo) },
-                enabled = token.isNotBlank() && repo.contains("/")
+                onClick = { onSave(accessKey, secretKey, bucket, region, domain) },
+                enabled = accessKey.isNotBlank() && secretKey.isNotBlank() && bucket.isNotBlank()
             ) {
                 Text("Save")
             }
