@@ -6,6 +6,10 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import dagger.hilt.android.qualifiers.ApplicationContext
 import fumi.day.literalmusi.data.git.GitTransport
+import fumi.day.literalmusi.data.git.OpLog
+import fumi.day.literalmusi.data.git.OpType
+import fumi.day.literalmusi.data.git.Operation
+import fumi.day.literalmusi.data.git.SyncScheduler
 import fumi.day.literalmusi.domain.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -22,7 +26,9 @@ import javax.inject.Singleton
 @Singleton
 class MusicRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val gitTransport: GitTransport
+    private val gitTransport: GitTransport,
+    private val opLog: OpLog,
+    private val syncScheduler: SyncScheduler
 ) : MusicRepository {
 
     private val pileDir: File get() = gitTransport.pileDir
@@ -107,6 +113,11 @@ class MusicRepositoryImpl @Inject constructor(
                         input.copyTo(output)
                     }
                 }
+                opLog.append(Operation(
+                    type = OpType.ADD,
+                    path = "pile/$fileName"
+                ))
+                syncScheduler.onOperationEnqueued()
                 if (deleteSource) {
                     try { context.contentResolver.delete(uri, null, null) } catch (_: Exception) {}
                 }
@@ -124,6 +135,12 @@ class MusicRepositoryImpl @Inject constructor(
         val trash = gitTransport.trashDir
         trash.mkdirs()
         file.renameTo(File(trash, file.name))
+
+        opLog.append(Operation(
+            type = OpType.DELETE,
+            path = "pile/${file.name}"
+        ))
+        syncScheduler.onOperationEnqueued()
 
         _refresh.tryEmit(Unit)
     }
