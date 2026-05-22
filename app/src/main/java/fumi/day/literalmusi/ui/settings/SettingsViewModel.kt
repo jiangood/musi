@@ -163,6 +163,11 @@ class SettingsViewModel @Inject constructor(
         return File(context.filesDir, "repo/pile").also { it.mkdirs() }
     }
 
+    private fun autoDomain(bucket: String, region: String): String {
+        val r = region.ifEmpty { "z0" }
+        return "https://$bucket.s3-$r.qiniucs.com"
+    }
+
     fun saveOssConfig(
         accessKey: String,
         secretKey: String,
@@ -170,6 +175,8 @@ class SettingsViewModel @Inject constructor(
         region: String,
         domain: String
     ) {
+        val resolvedDomain = domain.ifBlank { autoDomain(bucket, region) }
+        val resolvedRegion = region.ifEmpty { "z0" }
         viewModelScope.launch {
             val current = userPreferences.userPrefs.first()
             val repoDir = File(context.filesDir, "repo")
@@ -182,8 +189,8 @@ class SettingsViewModel @Inject constructor(
                     pendingAccessKey = accessKey
                     pendingSecretKey = secretKey
                     pendingBucket = bucket
-                    pendingRegion = region
-                    pendingDomain = domain
+                    pendingRegion = resolvedRegion
+                    pendingDomain = resolvedDomain
                     _showOverwriteConfirm.value = true
                     return@launch
                 }
@@ -195,8 +202,8 @@ class SettingsViewModel @Inject constructor(
                 accessKey = accessKey,
                 secretKey = secretKey,
                 bucket = bucket,
-                region = region,
-                domain = domain
+                region = resolvedRegion,
+                domain = resolvedDomain
             )
             if (accessKey.isNotBlank() && secretKey.isNotBlank() && bucket.isNotBlank()) {
                 syncNow()

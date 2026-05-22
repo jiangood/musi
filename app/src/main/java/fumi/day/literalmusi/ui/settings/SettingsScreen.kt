@@ -707,8 +707,9 @@ private fun CloudSettingsDialog(
     var accessKey by remember { mutableStateOf(initialAccessKey) }
     var secretKey by remember { mutableStateOf(initialSecretKey) }
     var bucket by remember { mutableStateOf(initialBucket) }
-    var region by remember { mutableStateOf(initialRegion) }
+    var region by remember { mutableStateOf(initialRegion.ifEmpty { "z0" }) }
     var domain by remember { mutableStateOf(initialDomain) }
+    var showAdvanced by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -737,21 +738,34 @@ private fun CloudSettingsDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                OutlinedTextField(
-                    value = region,
-                    onValueChange = { region = it },
-                    label = { Text("Region (e.g. z0)") },
-                    singleLine = true,
+
+                TextButton(
+                    onClick = { showAdvanced = !showAdvanced },
                     modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = domain,
-                    onValueChange = { domain = it },
-                    label = { Text("Domain") },
-                    singleLine = true,
-                    placeholder = { Text("https://your-domain.com") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                ) {
+                    Text(
+                        if (showAdvanced) "Hide Advanced Settings" else "Show Advanced Settings",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+
+                if (showAdvanced) {
+                    OutlinedTextField(
+                        value = region,
+                        onValueChange = { region = it },
+                        label = { Text("Region") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = domain,
+                        onValueChange = { domain = it },
+                        label = { Text("Domain") },
+                        singleLine = true,
+                        placeholder = { Text("Auto-generated from bucket") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
         confirmButton = {
