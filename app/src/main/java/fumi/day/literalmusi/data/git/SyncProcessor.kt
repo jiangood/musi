@@ -5,10 +5,24 @@ import javax.inject.Singleton
 
 @Singleton
 class SyncProcessor @Inject constructor(
-    private val gitTransport: GitTransport
+    private val gitTransport: GitTransport,
+    private val opLog: OpLog
 ) {
-    suspend fun process(knownShas: Map<String, String> = emptyMap(), lastSyncedAt: Long? = null): SyncResult {
+    suspend fun process(): SyncResult {
+        var uploaded = 0
         val errors = mutableListOf<String>()
+
+        val ops = opLog.rotate()
+        if (ops.isNotEmpty()) {
+            val result = gitTransport.batchCommit(ops)
+            if (result.committed) {
+                uploaded = ops.size
+                opLog.completeSync()
+            } else {
+                opLog.failSync()
+            }
+            errors.addAll(result.errors)
+        }
 
         val pullResult = try {
             gitTransport.pull()
@@ -16,20 +30,12 @@ class SyncProcessor @Inject constructor(
             PullResult(filesDownloaded = 0)
         }
 
-        val commitResult = try {
-            gitTransport.commit("sync", knownShas, lastSyncedAt)
-        } catch (e: Exception) {
-            errors.add("${e.javaClass.simpleName}: ${e.message}")
-            CommitResult()
-        }
-
-        errors.addAll(commitResult.errors)
+        errors.addAll(pullResult.conflicts)
 
         return SyncResult(
-            uploaded = commitResult.uploaded,
+            uploaded = uploaded,
             downloaded = pullResult.filesDownloaded,
-            errors = errors + pullResult.conflicts,
-            newShas = commitResult.newShas
+            errors = errors
         )
     }
 }
