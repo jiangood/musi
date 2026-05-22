@@ -1,7 +1,9 @@
 package fumi.day.literalmusi.data.player
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -34,7 +36,7 @@ data class PlayerState(
 class MusicPlayer @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    private val player: ExoPlayer = ExoPlayer.Builder(context)
+    val player: ExoPlayer = ExoPlayer.Builder(context)
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
@@ -42,6 +44,7 @@ class MusicPlayer @Inject constructor(
                 .build(),
             /* handleAudioFocus = */ true
         )
+        .setWakeMode(C.WAKE_MODE_LOCAL)
         .setSkipSilenceEnabled(false)
         .build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -89,6 +92,7 @@ class MusicPlayer @Inject constructor(
     }
 
     fun play(song: Song, queue: List<Song>) {
+        ContextCompat.startForegroundService(context, Intent(context, PlaybackService::class.java))
         currentQueue = queue
         val startIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
         val mediaItems = queue.map { it.toMediaItem() }
@@ -114,6 +118,7 @@ class MusicPlayer @Inject constructor(
         player.stop()
         currentQueue = emptyList()
         _state.value = PlayerState()
+        context.stopService(Intent(context, PlaybackService::class.java))
     }
 
     fun skipToPrevious() {
