@@ -33,11 +33,21 @@ class GitSyncManager @Inject constructor(
     private val _syncError = MutableStateFlow<String?>(null)
     val syncError: StateFlow<String?> = _syncError.asStateFlow()
 
+    private val _currentOperation = MutableStateFlow<String?>(null)
+    val currentOperation: StateFlow<String?> = _currentOperation.asStateFlow()
+
+    private val _localFileCount = MutableStateFlow(0)
+    val localFileCount: StateFlow<Int> = _localFileCount.asStateFlow()
+
+    private val _remoteFileCount = MutableStateFlow<Int?>(null)
+    val remoteFileCount: StateFlow<Int?> = _remoteFileCount.asStateFlow()
+
     init {
         opLog.init(File(context.filesDir, "oplog"))
         syncScheduler.setSyncCallback {
             syncAndAwait()
         }
+        refreshFileCounts()
     }
 
     fun launchSync() {
@@ -52,9 +62,15 @@ class GitSyncManager @Inject constructor(
                 return@withContext null
             }
             _syncError.value = null
+            _currentOperation.value = "Initializing..."
             try {
                 gitTransport.ensureInitialized(prefs.gitHubToken, prefs.gitHubRepo)
-                val result = syncProcessor.process()
+                _remoteFileCount.value = gitTransport.remoteFileCount()
+                val result = syncProcessor.process { phase ->
+                    _currentOperation.value = phase
+                }
+                _currentOperation.value = null
+                refreshFileCounts()
                 if (result.errors.isNotEmpty()) {
                     _syncError.value = result.errors.first()
                 } else {
@@ -62,11 +78,17 @@ class GitSyncManager @Inject constructor(
                 }
                 result
             } catch (e: Exception) {
+                _currentOperation.value = null
                 val msg = "${e.javaClass.simpleName}: ${e.message ?: "Sync failed"}"
                 _syncError.value = msg
                 SyncResult(errors = listOf(msg))
             }
         }
+    }
+
+    private fun refreshFileCounts() {
+        _localFileCount.value = gitTransport.pileDir.listFiles()?.filter { it.isFile }?.size ?: 0
+        _remoteFileCount.value = gitTransport.remoteFileCount()
     }
 
     suspend fun mergeAndAwait(): SyncResult? {

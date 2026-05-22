@@ -71,6 +71,9 @@ fun SettingsScreen(
     val syncResult by viewModel.syncResult.collectAsState()
     val importProgress by viewModel.importProgress.collectAsState()
     val lastSyncError by viewModel.lastSyncError.collectAsState()
+    val currentOperation by viewModel.currentOperation.collectAsState()
+    val localFileCount by viewModel.localFileCount.collectAsState()
+    val remoteFileCount by viewModel.remoteFileCount.collectAsState()
     val showOverwriteConfirm by viewModel.showOverwriteConfirm.collectAsState()
     val mediaStoreSongs by viewModel.mediaStoreSongs.collectAsState()
 
@@ -109,10 +112,8 @@ fun SettingsScreen(
 
             GitSyncCard(
                 userPrefs = userPrefs,
-                isSyncing = isSyncing,
                 accentColor = MaterialTheme.colorScheme.primary,
                 onConnectClick = { showGitDialog = true },
-                onSyncNowClick = viewModel::syncNow,
                 onEditClick = { showGitDialog = true },
                 onDisconnectClick = viewModel::disconnectGitHub
             )
@@ -120,9 +121,14 @@ fun SettingsScreen(
             HorizontalDivider()
 
             SyncStatusCard(
+                gitHubEnabled = userPrefs.gitHubEnabled,
                 isSyncing = isSyncing,
+                currentOperation = currentOperation,
                 lastSyncedAt = userPrefs.lastSyncedAt,
                 lastSyncError = lastSyncError,
+                localFileCount = localFileCount,
+                remoteFileCount = remoteFileCount,
+                onSyncNowClick = viewModel::syncNow,
                 onClick = { showSyncStatusDialog = true }
             )
 
@@ -454,9 +460,14 @@ private fun MediaStorePickerDialog(
 
 @Composable
 private fun SyncStatusCard(
+    gitHubEnabled: Boolean,
     isSyncing: Boolean,
+    currentOperation: String?,
     lastSyncedAt: Long?,
     lastSyncError: String?,
+    localFileCount: Int,
+    remoteFileCount: Int?,
+    onSyncNowClick: () -> Unit,
     onClick: () -> Unit
 ) {
     val (statusText, statusColor) = when {
@@ -473,6 +484,34 @@ private fun SyncStatusCard(
             .clickable(onClick = onClick)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
+            if (isSyncing && currentOperation != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = currentOperation,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(8.dp))
+            } else if (gitHubEnabled && !isSyncing) {
+                OutlinedButton(
+                    onClick = onSyncNowClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Sync Now")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -485,12 +524,12 @@ private fun SyncStatusCard(
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isSyncing) {
+                    if (isSyncing && currentOperation == null) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp
                         )
-                    } else {
+                    } else if (!isSyncing) {
                         Box(
                             modifier = Modifier
                                 .size(10.dp)
@@ -516,12 +555,20 @@ private fun SyncStatusCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
             Text(
-                text = "Tap for details",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.align(Alignment.End)
+                text = "Local files: $localFileCount",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (remoteFileCount != null) {
+                Text(
+                    text = "Remote files: $remoteFileCount",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -614,10 +661,8 @@ private fun formatRelativeTime(timestamp: Long?): String {
 @Composable
 private fun GitSyncCard(
     userPrefs: fumi.day.literalmusi.data.prefs.UserPrefs,
-    isSyncing: Boolean,
     accentColor: Color,
     onConnectClick: () -> Unit,
-    onSyncNowClick: () -> Unit,
     onEditClick: () -> Unit,
     onDisconnectClick: () -> Unit
 ) {
@@ -669,16 +714,6 @@ private fun GitSyncCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    if (isSyncing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        OutlinedButton(onClick = onSyncNowClick) {
-                            Text("Sync Now")
-                        }
-                    }
                     OutlinedButton(onClick = onEditClick) {
                         Text("Edit")
                     }

@@ -125,7 +125,12 @@ class MusicRepositoryImpl @Inject constructor(
                 errors.add("Failed to import file: ${e.message}")
             }
         }
+        _refresh.tryEmit(Unit)
         return errors
+    }
+
+    override fun refresh() {
+        _refresh.tryEmit(Unit)
     }
 
     override suspend fun deleteSong(song: Song) = withContext(Dispatchers.IO) {

@@ -13,6 +13,7 @@ interface GitTransport {
     suspend fun batchCommit(ops: List<Operation>): BatchResult
     val pileDir: File
     val trashDir: File
+    fun remoteFileCount(): Int?
     fun close()
 }
 

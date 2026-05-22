@@ -139,6 +139,11 @@ class GitHubApiTransport @Inject constructor(
         }
     }
 
+    override fun remoteFileCount(): Int? {
+        if (token.isBlank() || repoOwner.isBlank()) return null
+        return remoteFiles.size
+    }
+
     override fun close() {
         remoteFiles = emptyMap()
     }

@@ -72,6 +72,12 @@ class SettingsViewModel @Inject constructor(
 
     val lastSyncError: StateFlow<String?> = syncManager.syncError
 
+    val currentOperation: StateFlow<String?> = syncManager.currentOperation
+
+    val localFileCount: StateFlow<Int> = syncManager.localFileCount
+
+    val remoteFileCount: StateFlow<Int?> = syncManager.remoteFileCount
+
     private val _syncResult = MutableStateFlow<SyncResult?>(null)
     val syncResult: StateFlow<SyncResult?> = _syncResult.asStateFlow()
 
@@ -161,6 +167,7 @@ class SettingsViewModel @Inject constructor(
             }
 
             _importProgress.value = ImportProgress(total, completed, errors, false)
+            musicRepository.refresh()
         }
     }
 
@@ -225,6 +232,7 @@ class SettingsViewModel @Inject constructor(
             )
             if (pendingToken.isNotBlank() && pendingRepo.isNotBlank()) {
                 _syncResult.value = syncManager.mergeAndAwait()
+                musicRepository.refresh()
             }
             pendingToken = ""
             pendingRepo = ""
@@ -247,6 +255,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _syncResult.value = null
             _syncResult.value = syncManager.syncAndAwait()
+            musicRepository.refresh()
         }
     }
 
