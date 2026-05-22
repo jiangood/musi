@@ -247,7 +247,7 @@ class GitHubApiTransport @Inject constructor(
         file.inputStream().use { input ->
             var bytesRead: Int
             while (input.read(buf).also { bytesRead = it } != -1) {
-                os.write(if (bytesRead == buf.size) encoder.encode(buf) else encoder.encode(buf, 0, bytesRead))
+                os.write(encoder.encode(buf.copyOfRange(0, bytesRead)))
             }
         }
         os.write("\",\"encoding\":\"base64\"}".toByteArray())
