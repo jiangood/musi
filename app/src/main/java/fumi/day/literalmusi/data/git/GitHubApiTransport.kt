@@ -9,10 +9,7 @@ import java.io.File
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
-import java.text.SimpleDateFormat
 import java.util.Base64
-import java.util.Date
-import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -61,98 +58,86 @@ class GitHubApiTransport @Inject constructor(
         return PullResult(conflicts = emptyList(), filesDownloaded = downloaded)
     }
 
-    override suspend fun stageAll(): Int {
-        val local = pileDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
-        return (local - remoteFiles.keys).size
-    }
-
-    override suspend fun commit(message: String, knownShas: Map<String, String>, lastSyncedAt: Long?): CommitResult {
-        val localFiles = pileDir.listFiles()?.associateBy { it.name } ?: emptyMap()
-        val localPileNames = localFiles.keys
-        val trashNames = trashDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
-        val remoteNames = remoteFiles.keys
-
-        val skipped = mutableSetOf<String>()
-        val toDelete = remoteNames.intersect(trashNames)
-        val toUpload = mutableSetOf<String>()
-        toUpload.addAll(localPileNames - remoteNames)
+    override suspend fun batchCommit(ops: List<Operation>): BatchResult {
+        if (ops.isEmpty()) return BatchResult(committed = true)
 
         val errors = mutableListOf<String>()
-        var uploaded = 0
-        val newShas = mutableMapOf<String, String>()
-
-        for (name in localPileNames.intersect(remoteNames)) {
-            val file = localFiles[name] ?: continue
-            val remoteSha = remoteFiles[name]?.sha ?: continue
-            val knownSha = knownShas[name]
-
-            val localChanged = file.lastModified() > (lastSyncedAt ?: 0L)
-            val remoteChanged = knownSha != null && knownSha != remoteSha
-
-            when {
-                !localChanged && !remoteChanged -> skipped.add(name)
-                localChanged && !remoteChanged -> toUpload.add(name)
-                !localChanged && remoteChanged -> {
-                    file.delete()
-                    skipped.add(name)
-                }
-                else -> {
-                    val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                    val conflictName = "${name}_conflict_$ts"
-                    file.renameTo(File(pileDir, conflictName))
-                    skipped.add(name)
-                    errors.add("Conflict: $name renamed to $conflictName")
-                }
-            }
-        }
-
-        if (toUpload.isEmpty() && toDelete.isEmpty()) return CommitResult(newShas = knownShas, errors = errors)
-
-        ensureRepoInitialized()
-
         val entries = mutableListOf<JSONObject>()
 
-        for (name in localPileNames.intersect(remoteNames) - skipped) {
-            remoteFiles[name]?.let { info ->
-                entries.add(JSONObject().apply {
-                    put("path", "pile/$name")
-                    put("mode", "100644")
-                    put("type", "blob")
-                    put("sha", info.sha)
-                })
-                newShas[name] = info.sha
+        for ((name, info) in remoteFiles) {
+            entries.add(JSONObject().apply {
+                put("path", "pile/$name")
+                put("mode", "100644")
+                put("type", "blob")
+                put("sha", info.sha)
+            })
+        }
+
+        for (op in ops) {
+            when (op.type) {
+                OpType.ADD, OpType.MODIFY -> {
+                    val name = op.path.removePrefix("pile/")
+                    val file = File(pileDir, name)
+                    if (!file.exists()) {
+                        errors.add("${op.type} failed: ${op.path} not found locally")
+                        continue
+                    }
+                    try {
+                        val sha = createBlob(file)
+                        entries.removeAll { it.getString("path") == op.path }
+                        entries.add(JSONObject().apply {
+                            put("path", op.path)
+                            put("mode", "100644")
+                            put("type", "blob")
+                            put("sha", sha)
+                        })
+                    } catch (e: Exception) {
+                        errors.add("${op.type} ${op.path} failed: ${e.message}")
+                    }
+                }
+                OpType.DELETE -> {
+                    entries.removeAll { it.getString("path") == op.path }
+                }
+                OpType.RENAME -> {
+                    entries.removeAll { it.getString("path") == op.oldPath }
+                    val name = op.path.removePrefix("pile/")
+                    val file = File(pileDir, name)
+                    if (!file.exists()) {
+                        errors.add("RENAME failed: ${op.path} not found locally")
+                        continue
+                    }
+                    try {
+                        val sha = createBlob(file)
+                        entries.add(JSONObject().apply {
+                            put("path", op.path)
+                            put("mode", "100644")
+                            put("type", "blob")
+                            put("sha", sha)
+                        })
+                    } catch (e: Exception) {
+                        errors.add("RENAME ${op.path} failed: ${e.message}")
+                    }
+                }
             }
         }
 
-        for (name in toUpload) {
-            val file = localFiles[name] ?: continue
-            try {
-                val sha = createBlob(file)
-                entries.add(JSONObject().apply {
-                    put("path", "pile/$name")
-                    put("mode", "100644")
-                    put("type", "blob")
-                    put("sha", sha)
-                })
-                newShas[name] = sha
-                uploaded++
-            } catch (e: Exception) {
-                errors.add("Upload $name failed: ${e.message}")
-            }
+        if (entries.isEmpty()) {
+            return BatchResult(committed = true, errors = errors)
         }
 
-        if (entries.isEmpty()) return CommitResult(uploaded = uploaded, newShas = newShas + knownShas, errors = errors)
-
-        val treeSha = createTree(entries)
-        val parentSha = getRefSha()
-        val commitSha = createCommit(message, treeSha, parentSha)
-        updateRef(commitSha)
-
-        remoteFiles = listRemoteFiles()
-        return CommitResult(uploaded = uploaded, newShas = newShas + knownShas, errors = errors)
+        try {
+            ensureRepoInitialized()
+            val treeSha = createTree(entries)
+            val parentSha = getRefSha()
+            val commitSha = createCommit("sync: ${ops.size} ops", treeSha, parentSha)
+            updateRef(commitSha)
+            remoteFiles = listRemoteFiles()
+            return BatchResult(committed = true, errors = errors)
+        } catch (e: Exception) {
+            errors.add("${e.javaClass.simpleName}: ${e.message}")
+            return BatchResult(committed = false, errors = errors)
+        }
     }
-
-    override suspend fun push(): Boolean = true
 
     override fun close() {
         remoteFiles = emptyMap()
