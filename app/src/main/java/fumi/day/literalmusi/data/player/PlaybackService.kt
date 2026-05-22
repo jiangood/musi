@@ -6,6 +6,7 @@ import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import dagger.hilt.android.AndroidEntryPoint
+import fumi.day.literalmusi.R
 import javax.inject.Inject
 
 @UnstableApi
