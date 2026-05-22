@@ -16,8 +16,7 @@ import javax.inject.Singleton
 data class SyncResult(
     val uploaded: Int = 0,
     val downloaded: Int = 0,
-    val errors: List<String> = emptyList(),
-    val newShas: Map<String, String> = emptyMap()
+    val errors: List<String> = emptyList()
 )
 
 @Singleton
@@ -26,7 +25,8 @@ class GitSyncManager @Inject constructor(
     private val gitTransport: GitTransport,
     private val syncProcessor: SyncProcessor,
     private val syncScheduler: SyncScheduler,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val opLog: OpLog
 ) {
     val isSyncing: StateFlow<Boolean> = syncScheduler.isSyncing
 
@@ -34,6 +34,7 @@ class GitSyncManager @Inject constructor(
     val syncError: StateFlow<String?> = _syncError.asStateFlow()
 
     init {
+        opLog.init(File(context.filesDir, "oplog"))
         syncScheduler.setSyncCallback {
             syncAndAwait()
         }
@@ -53,12 +54,11 @@ class GitSyncManager @Inject constructor(
             _syncError.value = null
             try {
                 gitTransport.ensureInitialized(prefs.gitHubToken, prefs.gitHubRepo)
-                val result = syncProcessor.process(prefs.lastSyncedShas, prefs.lastSyncedAt)
+                val result = syncProcessor.process()
                 if (result.errors.isNotEmpty()) {
                     _syncError.value = result.errors.first()
                 } else {
                     userPreferences.setLastSyncedAt(System.currentTimeMillis())
-                    userPreferences.setLastSyncedShas(result.newShas)
                 }
                 result
             } catch (e: Exception) {
@@ -77,5 +77,6 @@ class GitSyncManager @Inject constructor(
         gitTransport.close()
         val repoDir = File(context.filesDir, "repo")
         repoDir.deleteRecursively()
+        opLog.init(File(context.filesDir, "oplog"))
     }
 }
