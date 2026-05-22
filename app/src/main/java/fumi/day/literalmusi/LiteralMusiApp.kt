@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import dagger.hilt.android.HiltAndroidApp
+import fumi.day.literalmusi.data.player.PlaybackService
 
 @HiltAndroidApp
 class LiteralMusiApp : Application() {
