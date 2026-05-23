@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var syncScheduler: SyncScheduler
 
     private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
+        ActivityResultContracts.RequestMultiplePermissions()
     ) { _ -> }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        requestAudioPermission()
+        requestPermissions()
 
         setContent {
             LiteralMusiTheme {
@@ -56,17 +56,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestAudioPermission() {
-        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_AUDIO
+    private fun requestPermissions() {
+        val permissions = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-
-        if (ContextCompat.checkSelfPermission(this, permission)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissionLauncher.launch(permission)
+        val needed = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (needed.isNotEmpty()) {
+            requestPermissionLauncher.launch(needed.toTypedArray())
         }
     }
 }
