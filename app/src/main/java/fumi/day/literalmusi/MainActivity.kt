@@ -17,15 +17,11 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import dagger.hilt.android.AndroidEntryPoint
-import fumi.day.literalmusi.data.git.SyncScheduler
 import fumi.day.literalmusi.ui.App
 import fumi.day.literalmusi.ui.theme.LiteralMusiTheme
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
-    @Inject lateinit var syncScheduler: SyncScheduler
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -38,7 +34,6 @@ class MainActivity : ComponentActivity() {
 
         lifecycle.addObserver(LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                syncScheduler.onResume()
             }
         })
 

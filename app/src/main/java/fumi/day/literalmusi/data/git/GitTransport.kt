@@ -1,6 +1,17 @@
 package fumi.day.literalmusi.data.git
 
 import java.io.File
+import java.util.UUID
+
+enum class OpType { ADD, DELETE, RENAME, MODIFY }
+
+data class Operation(
+    val id: String = UUID.randomUUID().toString(),
+    val type: OpType,
+    val path: String,
+    val oldPath: String? = null,
+    val time: Long = System.currentTimeMillis()
+)
 
 data class BatchResult(
     val committed: Boolean = false,
