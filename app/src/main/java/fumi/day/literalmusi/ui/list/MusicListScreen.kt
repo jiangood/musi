@@ -3,7 +3,6 @@ package fumi.day.literalmusi.ui.list
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MusicNote
@@ -50,7 +49,7 @@ fun MusicListScreen(
     onNavigateToSettings: () -> Unit,
     viewModel: MusicListViewModel = hiltViewModel()
 ) {
-    val songs by viewModel.songs.collectAsState()
+    val groupedSongs by viewModel.groupedSongs.collectAsState()
     var deleteSong by remember { mutableStateOf<Song?>(null) }
 
     deleteSong?.let { song ->
@@ -86,7 +85,7 @@ fun MusicListScreen(
             )
         }
     ) { paddingValues ->
-        if (songs.isEmpty()) {
+        if (groupedSongs.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -116,30 +115,54 @@ fun MusicListScreen(
             }
         } else {
             Column(modifier = Modifier.padding(paddingValues)) {
+                val songCount = groupedSongs.count { it is MusicListItem.SongEntry }
                 Text(
-                    text = "${songs.size} songs",
+                    text = "$songCount songs",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
 
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(songs, key = { _, s -> s.id }) { _, song ->
-                        SongItem(
-                            song = song,
-                            onClick = {
-                                viewModel.playSong(song)
-                                onNavigateToPlayer()
-                            },
-                            onLongClick = { deleteSong = song }
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    items(groupedSongs, key = {
+                        when (it) {
+                            is MusicListItem.SectionHeader -> "header_${it.label}"
+                            is MusicListItem.SongEntry -> "song_${it.song.id}"
+                        }
+                    }) { item ->
+                        when (item) {
+                            is MusicListItem.SectionHeader -> SectionHeaderLabel(item.label)
+                            is MusicListItem.SongEntry -> {
+                                SongItem(
+                                    song = item.song,
+                                    onClick = {
+                                        viewModel.playSong(item.song)
+                                        onNavigateToPlayer()
+                                    },
+                                    onLongClick = { deleteSong = item.song }
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            }
+                        }
                     }
                     item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SectionHeaderLabel(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.4f))
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.Collator
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -117,7 +119,8 @@ class MusicRepositoryImpl @Inject constructor(
             writeCache(updatedEntries)
         }
 
-        return result
+        val collator = Collator.getInstance(Locale.CHINESE)
+        return result.sortedWith(compareBy(collator) { it.title })
     }
 
     private fun extractSong(file: File): Song? {
