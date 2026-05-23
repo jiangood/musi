@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -30,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,22 +55,51 @@ fun MusicListScreen(
 ) {
     val groupedSongs by viewModel.groupedSongs.collectAsState()
     var deleteSong by remember { mutableStateOf<Song?>(null) }
+    var deleteFromCloud by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.reconcileCloudStatus()
+    }
 
     deleteSong?.let { song ->
         AlertDialog(
-            onDismissRequest = { deleteSong = null },
+            onDismissRequest = {
+                deleteSong = null
+                deleteFromCloud = false
+            },
             title = { Text("Delete Song") },
-            text = { Text("Delete \"${song.title}\"? The file will be moved to trash.") },
+            text = {
+                Column {
+                    Text("Delete \"${song.title}\"? The file will be moved to trash.")
+                    if (song.isUploaded) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = deleteFromCloud,
+                                onCheckedChange = { deleteFromCloud = it }
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Also delete from cloud", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
+                    val songToDelete = song
+                    val cloudDelete = deleteFromCloud
                     deleteSong = null
-                    viewModel.deleteSong(song)
+                    deleteFromCloud = false
+                    viewModel.deleteSong(songToDelete, cloudDelete)
                 }) {
                     Text("Delete")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteSong = null }) {
+                TextButton(onClick = {
+                    deleteSong = null
+                    deleteFromCloud = false
+                }) {
                     Text("Cancel")
                 }
             }
@@ -201,6 +234,16 @@ private fun SongItem(
                 overflow = TextOverflow.Ellipsis
             )
         }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Icon(
+            imageVector = if (song.isUploaded) Icons.Filled.Cloud else Icons.Outlined.Cloud,
+            contentDescription = if (song.isUploaded) "Uploaded to cloud" else "Not uploaded",
+            modifier = Modifier.size(18.dp),
+            tint = if (song.isUploaded) MaterialTheme.colorScheme.primary
+                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+        )
 
         Spacer(modifier = Modifier.width(8.dp))
 
