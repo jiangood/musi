@@ -16,8 +16,6 @@ class PlaybackService : MediaSessionService() {
     @Inject lateinit var musicPlayer: MusicPlayer
     private var mediaSession: MediaSession? = null
 
-    override fun getSmallIcon(): Int = R.drawable.ic_notification_music_note
-
     override fun onCreate() {
         super.onCreate()
 
