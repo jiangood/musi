@@ -45,7 +45,8 @@ class MusicRepositoryImpl @Inject constructor(
         val duration: Long,
         val dataModified: Long,
         val format: String? = null,
-        val qualityLabel: String? = null
+        val qualityLabel: String? = null,
+        val isUploaded: Boolean = false
     )
 
     override fun observeAll(): Flow<List<Song>> = callbackFlow {
@@ -96,7 +97,8 @@ class MusicRepositoryImpl @Inject constructor(
                     uri = file.absolutePath,
                     dataModified = cached.dataModified,
                     format = cached.format,
-                    qualityLabel = cached.qualityLabel
+                    qualityLabel = cached.qualityLabel,
+                    isUploaded = cached.isUploaded
                 )
             } else {
                 song = extractSong(file)
@@ -108,7 +110,8 @@ class MusicRepositoryImpl @Inject constructor(
                         duration = song.duration,
                         dataModified = song.dataModified,
                         format = song.format,
-                        qualityLabel = song.qualityLabel
+                        qualityLabel = song.qualityLabel,
+                        isUploaded = song.isUploaded
                     )
                 }
             }
@@ -195,7 +198,8 @@ class MusicRepositoryImpl @Inject constructor(
                     duration = e.getLong("duration"),
                     dataModified = e.getLong("dataModified"),
                     format = e.optString("format", null),
-                    qualityLabel = e.optString("qualityLabel", null)
+                    qualityLabel = e.optString("qualityLabel", null),
+                    isUploaded = e.optBoolean("isUploaded", false)
                 )
             }
             map
@@ -219,6 +223,7 @@ class MusicRepositoryImpl @Inject constructor(
                 e.put("dataModified", entry.dataModified)
                 entry.format?.let { e.put("format", it) }
                 entry.qualityLabel?.let { e.put("qualityLabel", it) }
+                e.put("isUploaded", entry.isUploaded)
                 entriesObj.put(path, e)
             }
             obj.put("version", 1)

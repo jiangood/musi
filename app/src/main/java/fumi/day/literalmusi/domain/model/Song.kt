@@ -9,7 +9,8 @@ data class Song(
     val uri: String,
     val dataModified: Long,
     val format: String? = null,
-    val qualityLabel: String? = null
+    val qualityLabel: String? = null,
+    val isUploaded: Boolean = false
 ) {
     val formattedDuration: String
         get() {
