@@ -3,14 +3,17 @@ package fumi.day.literalmusi.ui.list
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import fumi.day.literalmusi.data.git.CloudSyncManager
 import fumi.day.literalmusi.data.player.MusicPlayer
 import fumi.day.literalmusi.data.repository.MusicRepository
 import fumi.day.literalmusi.domain.model.Song
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.Collator
 import java.util.Locale
 import javax.inject.Inject
@@ -23,7 +26,8 @@ sealed class MusicListItem {
 @HiltViewModel
 class MusicListViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
-    private val musicPlayer: MusicPlayer
+    private val musicPlayer: MusicPlayer,
+    private val cloudSyncManager: CloudSyncManager
 ) : ViewModel() {
 
     private val collator = Collator.getInstance(Locale.CHINESE)
@@ -59,12 +63,50 @@ class MusicListViewModel @Inject constructor(
     }
 
     fun deleteSong(song: Song) {
+        deleteSong(song, false)
+    }
+
+    fun deleteSong(song: Song, alsoDeleteFromCloud: Boolean) {
         viewModelScope.launch {
+            if (alsoDeleteFromCloud) {
+                try {
+                    val fileName = File(song.uri).name
+                    cloudSyncManager.deleteRemoteFiles(listOf(fileName))
+                } catch (_: Exception) { }
+            }
             val current = musicPlayer.state.value.currentSong
             musicRepository.deleteSong(song)
             if (current?.id == song.id) {
                 musicPlayer.stop()
             }
+        }
+    }
+
+    fun reconcileCloudStatus() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (!cloudSyncManager.isConfigured()) return@launch
+                val remoteFiles = cloudSyncManager.listRemoteFilenames().toSet()
+                val localFiles = musicRepository.getPileDir().listFiles()
+                    ?.filter { it.isFile }?.map { it.name }.orEmpty()
+                val uploaded = localFiles.filter { it in remoteFiles }
+                musicRepository.updateUploadState(uploaded, true)
+                val notUploaded = localFiles.filter { it !in remoteFiles }
+                musicRepository.updateUploadState(notUploaded, false)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun markUploaded(fileNames: List<String>) {
+        viewModelScope.launch {
+            musicRepository.updateUploadState(fileNames, true)
+        }
+    }
+
+    fun markNotUploaded(fileNames: List<String>) {
+        viewModelScope.launch {
+            musicRepository.updateUploadState(fileNames, false)
         }
     }
 }
