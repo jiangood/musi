@@ -836,8 +836,26 @@ fun refreshUploadCandidates() {
                 return@launch
             }
             val remoteFiles = cloudSyncManager.listRemoteFilenames().toSet()
-            val songs = musicRepository.observeAll().first()
-            _uploadCandidates.value = songs.filter { !it.isUploaded }
+            val localFiles = musicRepository.getPileDir().listFiles()
+                ?.filter { it.isFile && isAudioFile(it.name) }.orEmpty()
+            // Direct comparison: local files not in remote list
+            val notUploaded = localFiles.filter { it.name !in remoteFiles }
+            // Build Song-like objects for display
+            _uploadCandidates.value = notUploaded.mapNotNull { file ->
+                // Try to read metadata from cache first
+                val songs = musicRepository.observeAll().first()
+                songs.find { File(it.uri).name == file.name }
+                    ?: Song(
+                        id = file.absolutePath.hashCode().toLong() and 0xFFFFFFFFL,
+                        title = file.nameWithoutExtension,
+                        artist = "",
+                        album = "",
+                        duration = 0,
+                        uri = file.absolutePath,
+                        dataModified = file.lastModified(),
+                        isUploaded = false
+                    )
+            }
         } catch (_: Exception) {
             _uploadCandidates.value = emptyList()
         }
@@ -910,6 +928,7 @@ fun downloadFromCloud(fileNames: List<String>) {
         var completed = 0
         val errors = mutableListOf<String>()
         val downloaded = mutableListOf<String>()
+        val pileDir = musicRepository.getPileDir()
         for ((i, name) in fileNames.withIndex()) {
             if (!isActive) break
             _downloadProgress.value = _downloadProgress.value.copy(
@@ -917,6 +936,12 @@ fun downloadFromCloud(fileNames: List<String>) {
                 completed = i,
                 total = fileNames.size
             )
+            // Skip if local file already exists (conflict)
+            if (File(pileDir, name).exists()) {
+                errors.add("$name: skipped (already exists locally)")
+                completed++
+                continue
+            }
             try {
                 val result = cloudSyncManager.downloadFiles(listOf(name))
                 if (result.isSuccess) {
