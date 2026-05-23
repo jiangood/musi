@@ -86,7 +86,7 @@ class MusicRepositoryImpl @Inject constructor(
             val cached = cache[relPath]
             val song: Song?
 
-            if (cached != null && cached.dataModified == file.lastModified()) {
+            if (cached != null && cached.dataModified == file.lastModified() && cached.format != null) {
                 song = Song(
                     id = file.absolutePath.hashCode().toLong() and 0xFFFFFFFFL,
                     title = cached.title,
