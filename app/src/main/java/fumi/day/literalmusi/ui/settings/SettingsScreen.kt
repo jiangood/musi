@@ -1,10 +1,7 @@
 package fumi.day.literalmusi.ui.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,7 +41,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,13 +48,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import fumi.day.literalmusi.BuildConfig
-import fumi.day.literalmusi.data.git.SyncResult
+import fumi.day.literalmusi.data.prefs.UserPrefs
+import fumi.day.literalmusi.domain.model.Song
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,11 +63,11 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val userPrefs by viewModel.userPrefs.collectAsState()
-    val isSyncing by viewModel.isSyncing.collectAsState()
-    val syncResult by viewModel.syncResult.collectAsState()
     val importProgress by viewModel.importProgress.collectAsState()
-    val lastSyncError by viewModel.lastSyncError.collectAsState()
-    val currentOperation by viewModel.currentOperation.collectAsState()
+    val uploadProgress by viewModel.uploadProgress.collectAsState()
+    val downloadProgress by viewModel.downloadProgress.collectAsState()
+    val uploadCandidates by viewModel.uploadCandidates.collectAsState()
+    val downloadCandidates by viewModel.downloadCandidates.collectAsState()
     val localFileCount by viewModel.localFileCount.collectAsState()
     val remoteFileCount by viewModel.remoteFileCount.collectAsState()
     val showOverwriteConfirm by viewModel.showOverwriteConfirm.collectAsState()
@@ -79,7 +75,8 @@ fun SettingsScreen(
 
     var showGitDialog by remember { mutableStateOf(false) }
     var showMediaStorePicker by remember { mutableStateOf(false) }
-    var showSyncStatusDialog by remember { mutableStateOf(false) }
+    var showUploadDialog by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -110,26 +107,30 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
-            GitSyncCard(
+            CloudSyncCard(
                 userPrefs = userPrefs,
-                accentColor = MaterialTheme.colorScheme.primary,
+                gitHubEnabled = userPrefs.gitHubEnabled,
+                isUploading = uploadProgress.isUploading,
+                isDownloading = downloadProgress.isDownloading,
                 onConnectClick = { showGitDialog = true },
                 onEditClick = { showGitDialog = true },
-                onDisconnectClick = viewModel::disconnectGitHub
+                onDisconnectClick = viewModel::disconnectGitHub,
+                onUploadClick = {
+                    viewModel.refreshUploadCandidates()
+                    showUploadDialog = true
+                },
+                onDownloadClick = {
+                    viewModel.refreshDownloadCandidates()
+                    showDownloadDialog = true
+                }
             )
 
             HorizontalDivider()
 
             SyncStatusCard(
                 gitHubEnabled = userPrefs.gitHubEnabled,
-                isSyncing = isSyncing,
-                currentOperation = currentOperation,
-                lastSyncedAt = userPrefs.lastSyncedAt,
-                lastSyncError = lastSyncError,
                 localFileCount = localFileCount,
-                remoteFileCount = remoteFileCount,
-                onSyncNowClick = viewModel::syncNow,
-                onClick = { showSyncStatusDialog = true }
+                remoteFileCount = remoteFileCount
             )
 
             HorizontalDivider()
@@ -174,9 +175,7 @@ fun SettingsScreen(
                 Text("Local music data already exists. How would you like to proceed?")
             },
             confirmButton = {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { viewModel.confirmOverwrite() }) {
                         Text("Overwrite")
                     }
@@ -238,59 +237,89 @@ fun SettingsScreen(
         )
     }
 
-    if (isSyncing) {
-        AlertDialog(
-            onDismissRequest = { },
-            title = { Text("Syncing...") },
-            text = {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    Text("Downloading and uploading files...")
-                }
+    if (showUploadDialog) {
+        UploadDialog(
+            candidates = uploadCandidates,
+            onUpload = { fileNames ->
+                viewModel.uploadToCloud(fileNames)
+                showUploadDialog = false
             },
-            confirmButton = { }
+            onDismiss = { showUploadDialog = false }
         )
     }
 
-    syncResult?.let { result ->
-        if (!isSyncing) {
-            AlertDialog(
-                onDismissRequest = { viewModel.clearSyncResult() },
-                title = { Text(if (result.errors.isEmpty()) "Sync Complete" else "Sync Error") },
-                text = {
-                    if (result.errors.isEmpty()) {
-                        Text("Downloaded ${result.downloaded} files\nUploaded ${result.uploaded} files")
-                    } else {
-                        Text(result.errors.joinToString("\n"))
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { viewModel.clearSyncResult() }) {
-                        Text("OK")
-                    }
-                }
-            )
-        }
+    if (showDownloadDialog) {
+        DownloadDialog(
+            candidates = downloadCandidates,
+            onDownload = { fileNames ->
+                viewModel.downloadFromCloud(fileNames)
+                showDownloadDialog = false
+            },
+            onDismiss = { showDownloadDialog = false }
+        )
     }
 
-    if (showSyncStatusDialog) {
-        SyncStatusDialog(
-            isSyncing = isSyncing,
-            lastSyncedAt = userPrefs.lastSyncedAt,
-            lastSyncError = lastSyncError,
-            syncResult = syncResult,
-            onDismiss = { showSyncStatusDialog = false }
+    if (uploadProgress.isUploading) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Uploading to Cloud") },
+            text = {
+                Column {
+                    Text("Uploading: ${uploadProgress.currentFile}")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (uploadProgress.total > 0) {
+                        Text("${uploadProgress.completed + 1} / ${uploadProgress.total}")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { (uploadProgress.completed + 1).toFloat() / uploadProgress.total.toFloat() },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.cancelUpload() }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (downloadProgress.isDownloading) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Downloading from Cloud") },
+            text = {
+                Column {
+                    Text("Downloading: ${downloadProgress.currentFile}")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (downloadProgress.total > 0) {
+                        Text("${downloadProgress.completed + 1} / ${downloadProgress.total}")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { (downloadProgress.completed + 1).toFloat() / downloadProgress.total.toFloat() },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.cancelDownload() }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 
     if (showMediaStorePicker && mediaStoreSongs.isNotEmpty()) {
         MediaStorePickerDialog(
             songs = mediaStoreSongs,
-            onImport = { selectedUris ->
-                viewModel.importFromMediaStore(selectedUris)
+            onImport = { selectedUris, alsoUpload ->
+                viewModel.importFromMediaStore(selectedUris, alsoUpload)
                 showMediaStorePicker = false
             },
             onDismiss = { showMediaStorePicker = false }
@@ -338,11 +367,12 @@ private fun ImportMusicCard(
 @Composable
 private fun MediaStorePickerDialog(
     songs: List<MediaStoreSong>,
-    onImport: (List<String>) -> Unit,
+    onImport: (List<String>, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     var selected by remember { mutableStateOf(setOf<String>()) }
     var expandedFolders by remember { mutableStateOf(setOf<String>()) }
+    var alsoUploadToCloud by remember { mutableStateOf(false) }
 
     val folderEntries = remember(songs) {
         songs.groupBy { it.parentFolder }.entries.sortedBy { it.key }
@@ -360,83 +390,101 @@ private fun MediaStorePickerDialog(
                     Text("No music found on device.")
                 }
             } else {
-                LazyColumn(modifier = Modifier.height(400.dp)) {
-                    folderEntries.forEach { (folder, folderSongs) ->
-                        val folderName = folder.substringAfterLast('/').ifEmpty { folder }
-                        val selectedInFolder = folderSongs.count { it.uri in selected }
-                        val allSelected = selectedInFolder == folderSongs.size
-                        val isExpanded = folder in expandedFolders
+                Column {
+                    LazyColumn(modifier = Modifier.height(300.dp)) {
+                        folderEntries.forEach { (folder, folderSongs) ->
+                            val folderName = folder.substringAfterLast('/').ifEmpty { folder }
+                            val selectedInFolder = folderSongs.count { it.uri in selected }
+                            val allSelected = selectedInFolder == folderSongs.size
+                            val isExpanded = folder in expandedFolders
 
-                        item(key = "header_$folder") {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        expandedFolders = if (isExpanded) expandedFolders - folder
-                                        else expandedFolders + folder
-                                    }
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = allSelected,
-                                    onCheckedChange = {
-                                        selected = if (allSelected) {
-                                            selected - folderSongs.map { it.uri }.toSet()
-                                        } else {
-                                            selected + folderSongs.map { it.uri }.toSet()
-                                        }
-                                    }
-                                )
-                                Icon(
-                                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown
-                                    else Icons.Default.KeyboardArrowRight,
-                                    contentDescription = if (isExpanded) "Collapse" else "Expand",
-                                    modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(folderName, style = MaterialTheme.typography.titleSmall)
-                                    Text(
-                                        "$selectedInFolder / ${folderSongs.size}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        if (isExpanded) {
-                            items(folderSongs, key = { it.id }) { song ->
+                            item(key = "header_$folder") {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            selected = if (song.uri in selected) selected - song.uri
-                                            else selected + song.uri
+                                            expandedFolders = if (isExpanded) expandedFolders - folder
+                                            else expandedFolders + folder
                                         }
-                                        .padding(start = 48.dp, top = 2.dp, bottom = 2.dp),
+                                        .padding(vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Checkbox(
-                                        checked = song.uri in selected,
+                                        checked = allSelected,
                                         onCheckedChange = {
-                                            selected = if (song.uri in selected) selected - song.uri
-                                            else selected + song.uri
+                                            selected = if (allSelected) {
+                                                selected - folderSongs.map { it.uri }.toSet()
+                                            } else {
+                                                selected + folderSongs.map { it.uri }.toSet()
+                                            }
                                         }
+                                    )
+                                    Icon(
+                                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown
+                                        else Icons.Default.KeyboardArrowRight,
+                                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(song.title, style = MaterialTheme.typography.bodyMedium)
+                                        Text(folderName, style = MaterialTheme.typography.titleSmall)
                                         Text(
-                                            "${song.artist} · ${song.formattedDuration}",
+                                            "$selectedInFolder / ${folderSongs.size}",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
                             }
+
+                            if (isExpanded) {
+                                items(folderSongs, key = { it.id }) { song ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                selected = if (song.uri in selected) selected - song.uri
+                                                else selected + song.uri
+                                            }
+                                            .padding(start = 48.dp, top = 2.dp, bottom = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = song.uri in selected,
+                                            onCheckedChange = {
+                                                selected = if (song.uri in selected) selected - song.uri
+                                                else selected + song.uri
+                                            }
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(song.title, style = MaterialTheme.typography.bodyMedium)
+                                            Text(
+                                                "${song.artist} · ${song.formattedDuration}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = alsoUploadToCloud,
+                                onCheckedChange = { alsoUploadToCloud = it }
+                            )
+                            Text("同时上传到云端", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -444,7 +492,7 @@ private fun MediaStorePickerDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onImport(selected.toList()) },
+                onClick = { onImport(selected.toList(), alsoUploadToCloud) },
                 enabled = selected.isNotEmpty()
             ) {
                 Text("Import (${selected.size})")
@@ -459,212 +507,16 @@ private fun MediaStorePickerDialog(
 }
 
 @Composable
-private fun SyncStatusCard(
+private fun CloudSyncCard(
+    userPrefs: UserPrefs,
     gitHubEnabled: Boolean,
-    isSyncing: Boolean,
-    currentOperation: String?,
-    lastSyncedAt: Long?,
-    lastSyncError: String?,
-    localFileCount: Int,
-    remoteFileCount: Int?,
-    onSyncNowClick: () -> Unit,
-    onClick: () -> Unit
-) {
-    val (statusText, statusColor) = when {
-        isSyncing -> "Syncing..." to MaterialTheme.colorScheme.tertiary
-        lastSyncError != null -> "Error" to MaterialTheme.colorScheme.error
-        lastSyncedAt != null -> "Synced" to Color(0xFF4CAF50)
-        else -> "Not connected" to MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    Card(
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            if (isSyncing && currentOperation != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = currentOperation,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(8.dp))
-            } else if (gitHubEnabled && !isSyncing) {
-                OutlinedButton(
-                    onClick = onSyncNowClick,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Sync Now")
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Sync Status",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isSyncing && currentOperation == null) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else if (!isSyncing) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(statusColor)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = statusColor
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = if (isSyncing) "Syncing in progress..."
-                       else "Last synced: ${formatRelativeTime(lastSyncedAt)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Local files: $localFileCount",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (remoteFileCount != null) {
-                Text(
-                    text = "Remote files: $remoteFileCount",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SyncStatusDialog(
-    isSyncing: Boolean,
-    lastSyncedAt: Long?,
-    lastSyncError: String?,
-    syncResult: SyncResult?,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Sync Status") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Status: ${
-                        when {
-                            isSyncing -> "Syncing..."
-                            lastSyncError != null -> "Error"
-                            lastSyncedAt != null -> "Synced"
-                            else -> "Not connected"
-                        }
-                    }",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = "Last synced: ${formatRelativeTime(lastSyncedAt)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (lastSyncError != null) {
-                    Text(
-                        text = "Error: $lastSyncError",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                if (syncResult != null && !isSyncing) {
-                    Text(
-                        text = "Uploaded: ${syncResult.uploaded} files",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "Downloaded: ${syncResult.downloaded} files",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (syncResult.errors.isNotEmpty()) {
-                        Text(
-                            text = "Errors: ${syncResult.errors.joinToString("\n")}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
-            }
-        }
-    )
-}
-
-private fun formatRelativeTime(timestamp: Long?): String {
-    if (timestamp == null) return "Never"
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
-    val seconds = diff / 1000
-    val minutes = seconds / 60
-    val hours = minutes / 60
-    val days = hours / 24
-    return when {
-        seconds < 60 -> "Just now"
-        minutes < 60 -> "${minutes}m ago"
-        hours < 24 -> "${hours}h ago"
-        days < 7 -> "${days}d ago"
-        else -> {
-            val cal = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
-            "${cal.get(java.util.Calendar.MONTH) + 1}/${cal.get(java.util.Calendar.DAY_OF_MONTH)}/${cal.get(java.util.Calendar.YEAR)}"
-        }
-    }
-}
-
-@Composable
-private fun GitSyncCard(
-    userPrefs: fumi.day.literalmusi.data.prefs.UserPrefs,
-    accentColor: Color,
+    isUploading: Boolean,
+    isDownloading: Boolean,
     onConnectClick: () -> Unit,
     onEditClick: () -> Unit,
-    onDisconnectClick: () -> Unit
+    onDisconnectClick: () -> Unit,
+    onUploadClick: () -> Unit,
+    onDownloadClick: () -> Unit
 ) {
     Card(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
@@ -672,20 +524,19 @@ private fun GitSyncCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = "Git Sync",
+                text = "Cloud Sync",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (!userPrefs.gitHubEnabled) {
+            if (!gitHubEnabled) {
                 Button(
                     onClick = onConnectClick,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Connect")
+                    Text("Connect GitHub")
                 }
             } else {
                 Text(
@@ -699,31 +550,279 @@ private fun GitSyncCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                if (userPrefs.gitHubToken.isBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Token missing. Please re-enter your Personal Access Token.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedButton(onClick = onEditClick) {
+                    OutlinedButton(onClick = onEditClick, modifier = Modifier.weight(1f)) {
                         Text("Edit")
                     }
-                    OutlinedButton(onClick = onDisconnectClick) {
+                    OutlinedButton(onClick = onDisconnectClick, modifier = Modifier.weight(1f)) {
                         Text("Disconnect")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Button(
+                        onClick = onUploadClick,
+                        enabled = !isUploading && !isDownloading,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (isUploading) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text(if (isUploading) "Uploading..." else "Upload to Cloud")
+                    }
+
+                    Button(
+                        onClick = onDownloadClick,
+                        enabled = !isUploading && !isDownloading,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (isDownloading) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text(if (isDownloading) "Downloading..." else "Download from Cloud")
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SyncStatusCard(
+    gitHubEnabled: Boolean,
+    localFileCount: Int,
+    remoteFileCount: Int?
+) {
+    Card(
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "Sync Status",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Local files: $localFileCount",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (remoteFileCount != null) {
+                Text(
+                    text = "Cloud files: $remoteFileCount",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else if (gitHubEnabled) {
+                Text(
+                    text = "Cloud files: --",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UploadDialog(
+    candidates: List<Song>,
+    onUpload: (List<String>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selected by remember { mutableStateOf(setOf<String>()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Upload to Cloud") },
+        text = {
+            if (candidates.isEmpty()) {
+                Text("All local songs are already uploaded to cloud.")
+            } else {
+                Column {
+                    Text(
+                        text = "${candidates.size} songs not yet uploaded",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.height(300.dp)) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selected = if (selected.size == candidates.size) emptySet()
+                                        else candidates.map { it.uri }.toSet()
+                                    }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = selected.size == candidates.size,
+                                    onCheckedChange = {
+                                        selected = if (selected.size == candidates.size) emptySet()
+                                        else candidates.map { it.uri }.toSet()
+                                    }
+                                )
+                                Text("Select All", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                        items(candidates, key = { it.uri }) { song ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selected = if (song.uri in selected) selected - song.uri
+                                        else selected + song.uri
+                                    }
+                                    .padding(start = 8.dp, top = 2.dp, bottom = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = song.uri in selected,
+                                    onCheckedChange = {
+                                        selected = if (song.uri in selected) selected - song.uri
+                                        else selected + song.uri
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Column {
+                                    Text(song.title, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        song.artist,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onUpload(selected.map { File(it).name })
+                },
+                enabled = selected.isNotEmpty()
+            ) {
+                Text("Upload (${selected.size})")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun DownloadDialog(
+    candidates: List<CloudFile>,
+    onDownload: (List<String>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selected by remember { mutableStateOf(setOf<String>()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Download from Cloud") },
+        text = {
+            if (candidates.isEmpty()) {
+                Text("No new songs available on cloud.")
+            } else {
+                Column {
+                    Text(
+                        text = "${candidates.size} songs available",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.height(300.dp)) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selected = if (selected.size == candidates.size) emptySet()
+                                        else candidates.map { it.fileName }.toSet()
+                                    }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = selected.size == candidates.size,
+                                    onCheckedChange = {
+                                        selected = if (selected.size == candidates.size) emptySet()
+                                        else candidates.map { it.fileName }.toSet()
+                                    }
+                                )
+                                Text("Select All", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                        items(candidates, key = { it.fileName }) { file ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selected = if (file.fileName in selected) selected - file.fileName
+                                        else selected + file.fileName
+                                    }
+                                    .padding(start = 8.dp, top = 2.dp, bottom = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = file.fileName in selected,
+                                    onCheckedChange = {
+                                        selected = if (file.fileName in selected) selected - file.fileName
+                                        else selected + file.fileName
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(file.title, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDownload(selected.toList())
+                },
+                enabled = selected.isNotEmpty()
+            ) {
+                Text("Download (${selected.size})")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
