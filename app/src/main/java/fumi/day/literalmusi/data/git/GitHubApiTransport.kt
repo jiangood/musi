@@ -39,6 +39,11 @@ class GitHubApiTransport @Inject constructor(
         remoteFiles = listRemoteFiles()
     }
 
+    override suspend fun listRemoteFilenames(): List<String> {
+        remoteFiles = listRemoteFiles()
+        return remoteFiles.keys.toList()
+    }
+
     override suspend fun pull(): PullResult {
         pileDir.mkdirs()
         val trashNames = trashDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
@@ -47,8 +52,8 @@ class GitHubApiTransport @Inject constructor(
         val downloaded = (remote - trashNames).count { fileName ->
             val localFile = File(pileDir, fileName)
             if (localFile.exists()) return@count false
-            try {
-                downloadFile(fileName, localFile)
+                try {
+                    doDownloadFile(fileName, localFile)
                 true
             } catch (_: Exception) {
                 false
@@ -200,7 +205,11 @@ class GitHubApiTransport @Inject constructor(
         }
     }
 
-    private fun downloadFile(fileName: String, target: File) {
+    override suspend fun downloadFile(fileName: String, target: File) {
+        doDownloadFile(fileName, target)
+    }
+
+    private fun doDownloadFile(fileName: String, target: File) {
         val conn = openConnection(repoApi("/contents/pile/$fileName"))
         conn.setRequestProperty("Accept", "application/vnd.github.v3.raw")
         checkResponse(conn)

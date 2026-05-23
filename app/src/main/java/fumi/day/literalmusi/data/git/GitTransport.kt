@@ -14,6 +14,8 @@ interface GitTransport {
     val pileDir: File
     val trashDir: File
     fun remoteFileCount(): Int?
+    suspend fun listRemoteFilenames(): List<String>
+    suspend fun downloadFile(fileName: String, target: File)
     fun close()
 }
 
