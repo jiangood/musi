@@ -125,6 +125,16 @@ fun PlayerScreen(
                     modifier = Modifier.padding(horizontal = 24.dp)
                 )
 
+                if (!song.qualityLabel.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = song.qualityLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    )
+                }
+
                 Spacer(modifier = Modifier.weight(1f))
 
                 Slider(

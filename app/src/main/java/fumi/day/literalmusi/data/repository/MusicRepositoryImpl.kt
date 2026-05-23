@@ -43,7 +43,9 @@ class MusicRepositoryImpl @Inject constructor(
         val artist: String,
         val album: String,
         val duration: Long,
-        val dataModified: Long
+        val dataModified: Long,
+        val format: String? = null,
+        val qualityLabel: String? = null
     )
 
     override fun observeAll(): Flow<List<Song>> = callbackFlow {
@@ -92,7 +94,9 @@ class MusicRepositoryImpl @Inject constructor(
                     album = cached.album,
                     duration = cached.duration,
                     uri = file.absolutePath,
-                    dataModified = cached.dataModified
+                    dataModified = cached.dataModified,
+                    format = cached.format,
+                    qualityLabel = cached.qualityLabel
                 )
             } else {
                 song = extractSong(file)
@@ -102,7 +106,9 @@ class MusicRepositoryImpl @Inject constructor(
                         artist = song.artist,
                         album = song.album,
                         duration = song.duration,
-                        dataModified = song.dataModified
+                        dataModified = song.dataModified,
+                        format = song.format,
+                        qualityLabel = song.qualityLabel
                     )
                 }
             }
@@ -135,6 +141,12 @@ class MusicRepositoryImpl @Inject constructor(
                 ?.takeIf { it.isNotBlank() } ?: "Unknown Album"
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 ?.toLongOrNull() ?: 0L
+            val format = file.extension.uppercase()
+            val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+                ?.toLongOrNull() ?: 0L
+            val sampleRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
+                ?.toIntOrNull() ?: 0
+            val qualityLabel = computeQualityLabel(format, bitrate, sampleRate)
             Song(
                 id = file.absolutePath.hashCode().toLong() and 0xFFFFFFFFL,
                 title = title,
@@ -142,12 +154,24 @@ class MusicRepositoryImpl @Inject constructor(
                 album = album,
                 duration = duration,
                 uri = file.absolutePath,
-                dataModified = file.lastModified()
+                dataModified = file.lastModified(),
+                format = format,
+                qualityLabel = qualityLabel
             )
         } catch (e: Exception) {
             null
         } finally {
             try { retriever.release() } catch (_: Exception) {}
+        }
+    }
+
+    private fun computeQualityLabel(format: String, bitrate: Long, sampleRate: Int): String? {
+        val lossyFormats = setOf("MP3", "AAC", "OGG", "OPUS", "WMA")
+        val losslessFormats = setOf("FLAC", "WAV", "ALAC", "AIFF", "DSF", "DFF")
+        return when {
+            format in lossyFormats && bitrate > 0 -> "$format ${bitrate / 1000}"
+            format in losslessFormats && sampleRate > 0 -> "$format ${sampleRate / 1000}kHz"
+            else -> format
         }
     }
 
@@ -169,7 +193,9 @@ class MusicRepositoryImpl @Inject constructor(
                     artist = e.getString("artist"),
                     album = e.getString("album"),
                     duration = e.getLong("duration"),
-                    dataModified = e.getLong("dataModified")
+                    dataModified = e.getLong("dataModified"),
+                    format = e.optString("format", null),
+                    qualityLabel = e.optString("qualityLabel", null)
                 )
             }
             map
@@ -191,6 +217,8 @@ class MusicRepositoryImpl @Inject constructor(
                 e.put("album", entry.album)
                 e.put("duration", entry.duration)
                 e.put("dataModified", entry.dataModified)
+                entry.format?.let { e.put("format", it) }
+                entry.qualityLabel?.let { e.put("qualityLabel", it) }
                 entriesObj.put(path, e)
             }
             obj.put("version", 1)
