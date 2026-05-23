@@ -25,7 +25,6 @@ class PlaybackService : MediaSessionService() {
             DefaultMediaNotificationProvider.Builder(this)
                 .setChannelId(CHANNEL_ID)
                 .setChannelName(R.string.notification_channel)
-                .setSmallIcon(R.drawable.ic_notification_music_note)
                 .build()
         )
     }
