@@ -21,12 +21,12 @@ class PlaybackService : MediaSessionService() {
 
         mediaSession = MediaSession.Builder(this, musicPlayer.player).build()
 
-        setMediaNotificationProvider(
-            DefaultMediaNotificationProvider.Builder(this)
-                .setChannelId(CHANNEL_ID)
-                .setChannelName(R.string.notification_channel)
-                .build()
-        )
+        val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
+            .setChannelId(CHANNEL_ID)
+            .setChannelName(R.string.notification_channel)
+            .build()
+        notificationProvider.setSmallIcon(R.drawable.ic_notification_music_note)
+        setMediaNotificationProvider(notificationProvider)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession {
