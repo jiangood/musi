@@ -3,6 +3,8 @@ package fumi.day.literalmusi.data.player
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -94,11 +96,13 @@ class MusicPlayer @Inject constructor(
     fun play(song: Song, queue: List<Song>) {
         ContextCompat.startForegroundService(context, Intent(context, PlaybackService::class.java))
         currentQueue = queue
-        val startIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-        val mediaItems = queue.map { it.toMediaItem() }
-        player.setMediaItems(mediaItems, startIndex, 0L)
-        player.prepare()
-        player.play()
+        Handler(Looper.getMainLooper()).post {
+            val startIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+            val mediaItems = queue.map { it.toMediaItem() }
+            player.setMediaItems(mediaItems, startIndex, 0L)
+            player.prepare()
+            player.play()
+        }
     }
 
     fun playPause() {
