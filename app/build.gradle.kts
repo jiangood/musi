@@ -1,7 +1,7 @@
 import com.android.build.gradle.internal.api.ApkVariantOutputImpl
 import java.util.Properties
 
-val appVersionName = "4.0.0"
+val appVersionName = "4.0.1"
 val localProperties = Properties()
 val localPropertiesFile: File = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {

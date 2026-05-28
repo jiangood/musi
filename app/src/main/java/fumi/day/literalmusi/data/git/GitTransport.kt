@@ -21,12 +21,12 @@ data class BatchResult(
 interface GitTransport {
     suspend fun ensureInitialized(token: String, repo: String)
     suspend fun pull(): PullResult
-    suspend fun batchCommit(ops: List<Operation>): BatchResult
+    suspend fun batchCommit(ops: List<Operation>, onBlobBytesTransferred: (Long) -> Unit = {}): BatchResult
     val pileDir: File
     val trashDir: File
     fun remoteFileCount(): Int?
     suspend fun listRemoteFilenames(): List<String>
-    suspend fun downloadFile(fileName: String, target: File)
+    suspend fun downloadFile(fileName: String, target: File, onBytesTransferred: (Long) -> Unit = {})
     fun close()
 }
 

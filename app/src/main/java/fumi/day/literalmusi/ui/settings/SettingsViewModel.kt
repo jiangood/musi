@@ -320,7 +320,7 @@ class SettingsViewModel @Inject constructor(
         uploadJob = viewModelScope.launch(Dispatchers.IO) {
             _uploadProgress.value = UploadProgress(isUploading = true, total = fileNames.size)
             val files = fileNames.map { File(musicRepository.getPileDir(), it) }.filter { it.exists() }
-            var completed = 0
+            val successfullyUploaded = mutableListOf<String>()
             val errors = mutableListOf<String>()
             for ((i, file) in files.withIndex()) {
                 if (!currentCoroutineContext().isActive) break
@@ -333,17 +333,25 @@ class SettingsViewModel @Inject constructor(
                     val result = cloudSyncManager.uploadFiles(listOf(file))
                     if (result.isFailure) {
                         errors.add("${file.name}: ${result.exceptionOrNull()?.message}")
+                    } else {
+                        successfullyUploaded.add(file.name)
                     }
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     errors.add("${file.name}: ${e.message}")
                 }
-                completed++
             }
-            musicRepository.updateUploadState(fileNames.take(completed), true)
-            _uploadProgress.value = UploadProgress(errors = errors)
+            musicRepository.updateUploadState(successfullyUploaded, true)
+            _uploadProgress.value = UploadProgress(
+                total = successfullyUploaded.size,
+                errors = errors
+            )
             refreshFileCounts()
         }
+    }
+
+    fun clearUploadResult() {
+        _uploadProgress.value = UploadProgress()
     }
 
     fun cancelUpload() {

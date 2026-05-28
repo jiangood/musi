@@ -63,7 +63,7 @@ class GitHubApiTransport @Inject constructor(
         return PullResult(conflicts = emptyList(), filesDownloaded = downloaded)
     }
 
-    override suspend fun batchCommit(ops: List<Operation>): BatchResult {
+    override suspend fun batchCommit(ops: List<Operation>, onBlobBytesTransferred: (Long) -> Unit): BatchResult {
         if (ops.isEmpty()) return BatchResult(committed = true)
 
         val errors = mutableListOf<String>()
@@ -88,7 +88,7 @@ class GitHubApiTransport @Inject constructor(
                         continue
                     }
                     try {
-                        val sha = createBlob(file)
+                        val sha = createBlob(file) { bytes -> onBlobBytesTransferred(bytes) }
                         entries.removeAll { it.getString("path") == op.path }
                         entries.add(JSONObject().apply {
                             put("path", op.path)
@@ -112,7 +112,7 @@ class GitHubApiTransport @Inject constructor(
                         continue
                     }
                     try {
-                        val sha = createBlob(file)
+                        val sha = createBlob(file) { bytes -> onBlobBytesTransferred(bytes) }
                         entries.add(JSONObject().apply {
                             put("path", op.path)
                             put("mode", "100644")
@@ -127,7 +127,7 @@ class GitHubApiTransport @Inject constructor(
         }
 
         if (entries.isEmpty()) {
-            return BatchResult(committed = true, errors = errors)
+            return BatchResult(committed = false, errors = errors)
         }
 
         try {
@@ -205,16 +205,25 @@ class GitHubApiTransport @Inject constructor(
         }
     }
 
-    override suspend fun downloadFile(fileName: String, target: File) {
-        doDownloadFile(fileName, target)
+    override suspend fun downloadFile(fileName: String, target: File, onBytesTransferred: (Long) -> Unit) {
+        doDownloadFile(fileName, target, onBytesTransferred)
     }
 
-    private fun doDownloadFile(fileName: String, target: File) {
+    private fun doDownloadFile(fileName: String, target: File, onBytesTransferred: (Long) -> Unit = {}) {
         val conn = openConnection(repoApi("/contents/pile/$fileName"))
         conn.setRequestProperty("Accept", "application/vnd.github.v3.raw")
         checkResponse(conn)
+        val buf = ByteArray(8192)
         target.outputStream().use { output ->
-            conn.inputStream.copyTo(output)
+            conn.inputStream.use { input ->
+                var total = 0L
+                var read: Int
+                while (input.read(buf).also { read = it } != -1) {
+                    output.write(buf, 0, read)
+                    total += read
+                    onBytesTransferred(total)
+                }
+            }
         }
     }
 
@@ -247,7 +256,7 @@ class GitHubApiTransport @Inject constructor(
         checkResponse(conn)
     }
 
-    private fun createBlob(file: File): String {
+    private fun createBlob(file: File, onBytesTransferred: (Long) -> Unit = {}): String {
         val conn = openConnection(repoApi("/git/blobs"), "POST").apply {
             connectTimeout = 30000
             readTimeout = 120000
@@ -258,10 +267,14 @@ class GitHubApiTransport @Inject constructor(
         os.write("{\"content\":\"".toByteArray())
         val encoder = Base64.getEncoder()
         val buf = ByteArray(3 * 4096)
+        var totalBytes = 0L
         file.inputStream().use { input ->
             var bytesRead: Int
             while (input.read(buf).also { bytesRead = it } != -1) {
-                os.write(encoder.encode(buf.copyOfRange(0, bytesRead)))
+                val encoded = encoder.encode(buf.copyOfRange(0, bytesRead))
+                os.write(encoded)
+                totalBytes += bytesRead
+                onBytesTransferred(totalBytes)
             }
         }
         os.write("\",\"encoding\":\"base64\"}".toByteArray())

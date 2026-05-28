@@ -287,6 +287,26 @@ fun SettingsScreen(
         )
     }
 
+    if (!uploadProgress.isUploading && (uploadProgress.total > 0 || uploadProgress.errors.isNotEmpty())) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearUploadResult() },
+            title = { Text("Upload Complete") },
+            text = {
+                Text(
+                    if (uploadProgress.errors.isEmpty())
+                        "Successfully uploaded ${uploadProgress.total} files."
+                    else
+                        "Uploaded ${uploadProgress.total} files with ${uploadProgress.errors.size} errors:\n${uploadProgress.errors.joinToString("\n")}"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearUploadResult() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
     if (downloadProgress.isDownloading) {
         AlertDialog(
             onDismissRequest = { },
@@ -581,7 +601,7 @@ private fun CloudSyncCard(
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(4.dp))
                         }
-                        Text(if (isUploading) "Uploading..." else "Upload to Cloud")
+                        Text(if (isUploading) "Uploading..." else "Upload")
                     }
 
                     Button(
